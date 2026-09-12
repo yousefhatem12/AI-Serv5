@@ -159,26 +159,33 @@ class DocumentLoader:
 
     def _extract_docx(self, path: Path) -> str:
         """Extracts paragraphs, hyperlinks, and table cells from DOCX files."""
+        lines: list[str] = []
         try:
             import docx
             from docx.oxml.ns import qn
             doc = docx.Document(str(path))
-            lines = []
             for p in doc.paragraphs:
                 p_text = ""
                 for child in p._p:
                     if child.tag.endswith("hyperlink"):
                         r_id = child.get(qn("r:id"))
-                        link_text = "".join(node.text for node in child.iter() if node.text)
+                        # In docx oxml, text is strictly in <w:t> nodes.
+                        # Do NOT use child.iter() without filtering for w:t, because parent oxml elements
+                        # return the same text as their children, causing duplicated/tripled words.
+                        link_text = "".join(t.text for t in child.iter(qn("w:t")) if t.text)
+                        target = None
                         if r_id and r_id in p.part.rels:
                             target = p.part.rels[r_id].target_ref
                             if target and target not in self.extracted_links:
                                 self.extracted_links.append(target)
+                        if target and target not in link_text:
                             p_text += f" {link_text} ({target}) "
                         else:
-                            p_text += f" {link_text} "
+                            p_text += link_text
                     elif child.tag.endswith("r"):
-                        p_text += "".join(node.text for node in child.iter() if node.text)
+                        # In docx oxml, text within a run <w:r> is strictly in <w:t> nodes.
+                        run_text = "".join(t.text for t in child.iter(qn("w:t")) if t.text)
+                        p_text += run_text
                 clean_line = p_text.strip() or p.text.strip()
                 if clean_line:
                     lines.append(clean_line)
@@ -188,7 +195,12 @@ class DocumentLoader:
                     row_text = " | ".join(cell.text.strip() for cell in row.cells if cell.text.strip())
                     if row_text:
                         lines.append(row_text)
-            return "\n".join(lines)
+            extracted = "\n\n".join(lines).strip()
+            if not extracted:
+                raise ValueError(
+                    f"No readable text could be extracted from DOCX file '{path.name}'."
+                )
+            return extracted
         except ImportError:
             # Fallback direct zip XML extraction if python-docx isn't installed
             import xml.etree.ElementTree as ET
@@ -198,7 +210,12 @@ class DocumentLoader:
             tree = ET.fromstring(xml_content)
             namespaces = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
             text_nodes = tree.findall(".//w:t", namespaces)
-            return " ".join(node.text for node in text_nodes if node.text)
+            extracted = " ".join(node.text for node in text_nodes if node.text).strip()
+            if not extracted:
+                raise ValueError(
+                    f"No readable text could be extracted from DOCX file '{path.name}'."
+                )
+            return extracted
         except Exception as e:
             logger.error(f"DOCX extraction error for {path}: {e}")
             raise ValueError(f"Failed to extract text from DOCX file '{path.name}': {e!s}")
