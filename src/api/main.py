@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.api.routers.cv_router import router as cv_router
+from src.api.routers.job_router import router as job_router
 from src.api.schemas.cv_schemas import ExtractionErrorResponse
 from src.api.security import check_rate_limit, verify_api_key
 from src.api.v1.routers import (
@@ -159,7 +160,7 @@ app.include_router(cv_router, dependencies=[Depends(check_rate_limit), Depends(v
 
 # The rest of the feature routes use the shared version prefix and inherit the
 # global rate limiter. API-key protection is applied consistently here too.
-for feature_router in (interview_router, matches_router, review_queue_router):
+for feature_router in (interview_router, matches_router, review_queue_router, job_router):
     app.include_router(
         feature_router,
         prefix=settings.API_V1_STR,
@@ -189,6 +190,7 @@ async def health_check():
             "skill_gap_analysis": "active",
             "interview_coach": "active",
             "review_queue": "active",
+            "job_description_understanding": "active",
         },
     }
 
