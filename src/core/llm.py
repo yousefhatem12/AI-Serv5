@@ -60,18 +60,26 @@ def get_llm(
     # 5. Resolve max_tokens
     resolved_max_tokens = max_tokens or settings.LLM_MAX_TOKENS
 
-    # Build provider-specific invocation parameters
+    # Map provider alias to LangChain provider identifier
+    langchain_provider = {
+        "gemini": "google_genai",
+        "google": "google_genai",
+    }.get(provider, provider)
+
     model_kwargs = dict(kwargs)
 
     if provider == "groq":
         model_kwargs.setdefault("max_retries", settings.LLM_MAX_RETRIES)
         model_kwargs.setdefault("request_timeout", settings.LLM_TIMEOUT)
-        # LangChain validates provider credentials while constructing the
-        # client. A placeholder keeps imports, health checks, and unit tests
-        # lazy; the real request still fails clearly until a key is configured.
         model_kwargs["groq_api_key"] = resolved_api_key or "not-configured"
         if resolved_base_url:
             model_kwargs["groq_api_base"] = resolved_base_url
+    elif provider in ("gemini", "google"):
+        model_kwargs.setdefault("max_retries", settings.LLM_MAX_RETRIES)
+        model_kwargs.setdefault("timeout", settings.LLM_TIMEOUT)
+        model_kwargs["google_api_key"] = resolved_api_key or "not-configured"
+        if resolved_base_url:
+            model_kwargs["client_options"] = {"api_endpoint": resolved_base_url}
     else:
         model_kwargs.setdefault("max_retries", settings.LLM_MAX_RETRIES)
         model_kwargs.setdefault("timeout", settings.LLM_TIMEOUT)
@@ -80,13 +88,13 @@ def get_llm(
             model_kwargs["base_url"] = resolved_base_url
 
     logger.debug(
-        f"Initializing LLM: provider={provider}, model={model_name}, "
-        f"temp={resolved_temp}, base_url={resolved_base_url}"
+        f"Initializing LLM: provider={provider} (langchain={langchain_provider}), "
+        f"model={model_name}, temp={resolved_temp}, base_url={resolved_base_url}"
     )
 
     return init_chat_model(
         model=model_name,
-        model_provider=provider,
+        model_provider=langchain_provider,
         temperature=resolved_temp,
         max_tokens=resolved_max_tokens,
         **model_kwargs

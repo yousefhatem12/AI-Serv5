@@ -11,3 +11,4 @@ def test_docx_extraction():
     assert doc_format == "docx"
     assert isinstance(extracted_text, str)
     assert len(extracted_text.strip()) > 0
+

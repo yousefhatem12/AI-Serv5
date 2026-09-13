@@ -27,16 +27,16 @@ def normalize_skills(
 
     Each raw dict is expected to have keys: name, importance, required_level.
 
-    Taxonomy resolution uses strict=False so that recognized technical tokens
-    that are not yet in the seed file still get a slug-based skill_id, while
-    genuine stop-words and noise are silently dropped.
+    Taxonomy resolution uses strict=True so that only recognized skills
+    and aliases in the platform taxonomy get canonical skill_ids and categories.
+    Unmapped terms have skill_id=None and category=None.
 
     Args:
         raw_skills: List of raw skill dicts from _validate_raw().
         taxonomy:   Injected TaxonomyManager singleton.
 
     Returns:
-        List of NormalizedSkill with skill_id populated where resolvable.
+        List of NormalizedSkill with skill_id and category populated where resolvable.
     """
     normalized: list[NormalizedSkill] = []
 
@@ -50,17 +50,12 @@ def normalize_skills(
             logger.debug("Dropped blacklisted skill token: '%s'", raw_name)
             continue
 
-        skill_id, canonical_name, category = taxonomy.normalize_skill(raw_name, strict=False)
-
-        if skill_id is None:
-            # Taxonomy couldn't produce any mapping — keep as unknown with original name
-            canonical_name = raw_name.strip().title()
-            category = None
+        skill_id, canonical_name, category = taxonomy.normalize_skill(raw_name, strict=True)
 
         normalized.append(
             NormalizedSkill(
                 skill_id=skill_id,
-                canonical_name=canonical_name or raw_name,
+                canonical_name=canonical_name or raw_name.strip(),
                 category=category,
                 raw_extracted=raw_name,
                 importance=raw.get("importance", "important"),

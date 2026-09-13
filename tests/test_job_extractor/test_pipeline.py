@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.job_extractor.llm_extractor import JobLLMExtractor, _validate_raw
-from src.job_extractor.models import JobRequirementProfile
+from src.job_extractor.models import JobRequirementProfile, NormalizedSkill
 from src.job_extractor.pipeline import JobExtractionPipeline, _score_confidence
 from src.job_extractor.skill_normalizer import normalize_skills
 from src.taxonomy.taxonomy_manager import TaxonomyManager
@@ -224,45 +224,89 @@ class TestSkillNormalization:
 # ── Tests: confidence scoring ─────────────────────────────────────────────────
 
 class TestConfidenceScoring:
-    def test_full_extraction_high_confidence(self):
+    def test_full_verified_extraction_high_confidence(self):
+        req = [
+            NormalizedSkill(skill_id="skill_python", canonical_name="Python", category="Programming Languages", raw_extracted="Python", importance="critical"),
+            NormalizedSkill(skill_id="skill_fastapi", canonical_name="FastAPI", category="Frameworks", raw_extracted="FastAPI", importance="critical"),
+            NormalizedSkill(skill_id="skill_postgresql", canonical_name="PostgreSQL", category="Databases", raw_extracted="PostgreSQL", importance="critical"),
+        ]
         score = _score_confidence(
             role_family="Engineering",
-            required_skills_count=6,
-            responsibilities=["Design APIs", "Lead reviews"],
+            canonical_role="Backend Software Engineer",
+            seniority="Senior",
+            required_skills=req,
+            preferred_skills=[],
+            responsibilities=["Design APIs", "Lead reviews", "Optimize queries"],
+            min_years_experience=5,
+            constraints=["Remote from Egypt"],
         )
-        assert score == 0.90
+        assert score >= 0.90
 
-    def test_null_role_family_deducts(self):
+    def test_fabricated_or_unmapped_skills_low_confidence(self):
+        """Unverified skills (skill_id=None) and vague roles must score very low."""
+        unmapped = [
+            NormalizedSkill(skill_id=None, canonical_name="Team Player", category=None, raw_extracted="team player", importance="important"),
+            NormalizedSkill(skill_id=None, canonical_name="Fast Learner", category=None, raw_extracted="fast learner", importance="important"),
+        ]
         score = _score_confidence(
             role_family=None,
-            required_skills_count=6,
-            responsibilities=["Design APIs"],
-        )
-        assert score == 0.80
-
-    def test_few_skills_deducts(self):
-        score = _score_confidence(
-            role_family="Engineering",
-            required_skills_count=2,
-            responsibilities=["Design APIs"],
-        )
-        assert score == 0.80
-
-    def test_no_responsibilities_deducts(self):
-        score = _score_confidence(
-            role_family="Engineering",
-            required_skills_count=5,
+            canonical_role=None,
+            seniority=None,
+            required_skills=unmapped,
+            preferred_skills=[],
             responsibilities=[],
+            min_years_experience=None,
+            constraints=[],
         )
-        assert score == 0.85
+        assert score <= 0.15
 
-    def test_worst_case_clamped_to_zero(self):
+    def test_verified_scores_higher_than_fabricated(self):
+        """Confidence score inversion test: verified skills MUST score strictly higher than fabricated skills."""
+        verified = [
+            NormalizedSkill(skill_id="skill_python", canonical_name="Python", category="Programming Languages", raw_extracted="Python", importance="critical"),
+            NormalizedSkill(skill_id="skill_sql", canonical_name="SQL", category="Databases", raw_extracted="SQL", importance="critical"),
+        ]
+        unmapped = [
+            NormalizedSkill(skill_id=None, canonical_name="ZoltraFlow", category=None, raw_extracted="ZoltraFlow", importance="critical"),
+            NormalizedSkill(skill_id=None, canonical_name="Fast Learner", category=None, raw_extracted="fast learner", importance="important"),
+            NormalizedSkill(skill_id=None, canonical_name="Team Player", category=None, raw_extracted="team player", importance="important"),
+        ]
+        score_verified = _score_confidence(
+            role_family="Engineering",
+            canonical_role="Software Engineer",
+            seniority=None,
+            required_skills=verified,
+            preferred_skills=[],
+            responsibilities=["Write code"],
+            min_years_experience=2,
+            constraints=[],
+        )
+        score_fabricated = _score_confidence(
+            role_family=None,
+            canonical_role=None,
+            seniority=None,
+            required_skills=unmapped,
+            preferred_skills=[],
+            responsibilities=["Be a team player"],
+            min_years_experience=None,
+            constraints=[],
+        )
+        assert score_verified > score_fabricated, (
+            f"Inversion detected: verified ({score_verified}) should be > fabricated ({score_fabricated})"
+        )
+
+    def test_empty_extraction_scores_zero(self):
         score = _score_confidence(
             role_family=None,
-            required_skills_count=0,
+            canonical_role=None,
+            seniority=None,
+            required_skills=[],
+            preferred_skills=[],
             responsibilities=[],
+            min_years_experience=None,
+            constraints=[],
         )
-        assert score >= 0.0
+        assert score == 0.0
 
 
 # ── Tests: validate_raw helper ────────────────────────────────────────────────

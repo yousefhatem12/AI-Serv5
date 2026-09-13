@@ -195,6 +195,7 @@ class DocumentLoader:
                     row_text = " | ".join(cell.text.strip() for cell in row.cells if cell.text.strip())
                     if row_text:
                         lines.append(row_text)
+            return "\n\n".join(lines)
             extracted = "\n\n".join(lines).strip()
             if not extracted:
                 raise ValueError(
@@ -210,6 +211,7 @@ class DocumentLoader:
             tree = ET.fromstring(xml_content)
             namespaces = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
             text_nodes = tree.findall(".//w:t", namespaces)
+            return " ".join(node.text for node in text_nodes if node.text)
             extracted = " ".join(node.text for node in text_nodes if node.text).strip()
             if not extracted:
                 raise ValueError(

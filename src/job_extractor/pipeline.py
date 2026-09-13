@@ -12,7 +12,7 @@ from src.core.llm_service import LLMService, get_llm_service
 from src.taxonomy.taxonomy_manager import TaxonomyManager
 
 from .llm_extractor import JobLLMExtractor
-from .models import JobRequirementProfile
+from .models import JobRequirementProfile, NormalizedSkill
 from .skill_normalizer import normalize_skills
 
 logger = logging.getLogger(__name__)
@@ -74,8 +74,13 @@ class JobExtractionPipeline:
         # ── Step 3: Confidence scoring ──────────────────────────────────
         confidence = _score_confidence(
             role_family=raw.get("role_family"),
-            required_skills_count=len(required_skills),
+            canonical_role=raw.get("canonical_role"),
+            seniority=raw.get("seniority"),
+            required_skills=required_skills,
+            preferred_skills=preferred_skills,
             responsibilities=raw.get("responsibilities", []),
+            min_years_experience=raw.get("min_years_experience"),
+            constraints=raw.get("constraints", []),
         )
         logger.debug("Step 3 complete — extraction_confidence=%.2f", confidence)
 
@@ -108,22 +113,61 @@ class JobExtractionPipeline:
 
 def _score_confidence(
     role_family: str | None,
-    required_skills_count: int,
+    canonical_role: str | None,
+    seniority: str | None,
+    required_skills: list[NormalizedSkill],
+    preferred_skills: list[NormalizedSkill],
     responsibilities: list[str],
+    min_years_experience: int | None,
+    constraints: list[str],
 ) -> float:
     """
-    Simple heuristic confidence score (0.0 – 1.0).
+    Principled confidence score (0.0 – 1.0) based on extraction signal strength.
 
-    Starts at 0.90 and applies deductions for signals of low-quality extraction:
-      -0.10  role_family could not be determined
-      -0.10  fewer than 3 required skills extracted
-      -0.05  no responsibilities extracted
+    1. Taxonomy Skill Signal (max 0.45):
+       - Proportion of extracted skills verified against the canonical taxonomy.
+       - Verification ratio: verified_skills / total_skills
+       - Volume factor: reward for having multiple verified skills (saturates at 3+ verified skills).
+
+    2. Role & Seniority Clarity (max 0.30):
+       - canonical_role present: +0.15
+       - role_family present: +0.10
+       - seniority present: +0.05
+
+    3. Context & Requirements Completeness (max 0.25):
+       - responsibilities present: up to +0.15 (0.05 per item, max 0.15)
+       - min_years_experience specified: +0.05
+       - constraints / location specified: +0.05
     """
-    score = 0.90
-    if role_family is None:
-        score -= 0.10
-    if required_skills_count < 3:
-        score -= 0.10
-    if not responsibilities:
-        score -= 0.05
-    return round(max(0.0, score), 2)
+    all_skills = required_skills + preferred_skills
+    total_skills = len(all_skills)
+    verified_skills = sum(1 for s in all_skills if s.skill_id is not None)
+
+    # 1. Skill signal (max 0.45)
+    if total_skills > 0:
+        verification_ratio = verified_skills / total_skills
+        volume_factor = min(1.0, verified_skills / 3.0)
+        skill_signal = (0.25 * verification_ratio) + (0.20 * volume_factor)
+    else:
+        skill_signal = 0.0
+
+    # 2. Role signal (max 0.30)
+    role_signal = 0.0
+    if canonical_role:
+        role_signal += 0.15
+    if role_family:
+        role_signal += 0.10
+    if seniority:
+        role_signal += 0.05
+
+    # 3. Context & requirements signal (max 0.25)
+    context_signal = 0.0
+    if responsibilities:
+        context_signal += min(0.15, len(responsibilities) * 0.05)
+    if min_years_experience is not None:
+        context_signal += 0.05
+    if constraints:
+        context_signal += 0.05
+
+    total_score = skill_signal + role_signal + context_signal
+    return round(min(1.0, max(0.0, total_score)), 2)
