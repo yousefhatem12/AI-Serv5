@@ -2,6 +2,7 @@ import logging
 from typing import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
+# pyrefly: ignore [missing-import]
 from src.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ def init_db() -> None:
         import src.db.models.review_queue
         import src.db.models.interview
         import src.db.models.job_requirement  # noqa: F401 — registers AI-contract columns
+        import src.db.models.roadmap
 
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables verified and initialized successfully.")

@@ -10,7 +10,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-
+# pyrefly: ignore [missing-import]
 from src.api.routers.cv_router import router as cv_router
 from src.api.routers.job_router import router as job_router
 from src.api.schemas.cv_schemas import ExtractionErrorResponse
@@ -18,12 +18,18 @@ from src.api.security import check_rate_limit, verify_api_key
 from src.api.v1.routers import (
     matches_router,
     review_queue_router,
+    roadmap_router,
     router as interview_router,
 )
+# pyrefly: ignore [missing-import]
 from src.core.config import get_app_settings, settings
+# pyrefly: ignore [missing-import]
 from src.core.redis import is_redis_available, redis_manager
+# pyrefly: ignore [missing-import]
 from src.db.base import init_db
+# pyrefly: ignore [missing-import]
 from src.middleware.llm_middleware import DynamicLLMMiddleware
+# pyrefly: ignore [missing-import]
 from src.middleware.rate_limit_middleware import RateLimitMiddleware
 
 load_dotenv()
@@ -160,7 +166,7 @@ app.include_router(cv_router, dependencies=[Depends(check_rate_limit), Depends(v
 
 # The rest of the feature routes use the shared version prefix and inherit the
 # global rate limiter. API-key protection is applied consistently here too.
-for feature_router in (interview_router, matches_router, review_queue_router, job_router):
+for feature_router in (interview_router, matches_router, review_queue_router, job_router, roadmap_router):
     app.include_router(
         feature_router,
         prefix=settings.API_V1_STR,
