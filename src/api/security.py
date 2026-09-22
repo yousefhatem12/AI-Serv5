@@ -6,6 +6,7 @@ from fastapi import HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader
 
 from src.core.config import get_app_settings
+from src.core.security import get_client_ip
 
 # API Key header definition for OpenAPI docs
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -67,14 +68,8 @@ class SlidingWindowRateLimiter:
 rate_limiter = SlidingWindowRateLimiter()
 
 
-def get_client_identifier(request: Request) -> str:
-    """Extracts client IP, considering X-Forwarded-For when behind reverse proxies."""
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
-    if request.client and request.client.host:
-        return request.client.host
-    return "127.0.0.1"
+# Canonical safe rate-limit client identity resolver from src.core.security
+get_client_identifier = get_client_ip
 
 
 async def verify_api_key(

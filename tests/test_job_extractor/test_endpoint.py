@@ -202,7 +202,7 @@ class TestJobEndpointHappyPath:
 
         try:
             with patch(
-                "src.api.routers.job_router.JobRequirementRepository.upsert",
+                "src.api.v1.endpoints.jobs.JobRequirementRepository.upsert",
                 return_value=False,
             ):
                 response = client.post(

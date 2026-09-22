@@ -109,7 +109,12 @@ def calculate_role_fit(
     # Fallback to candidate work history if target_roles is empty
     if not target_roles and candidate_experience:
         for exp in candidate_experience:
-            role_val = getattr(exp, "role", None) if hasattr(exp, "role") else exp.get("role") if isinstance(exp, dict) else None
+            if hasattr(exp, "job_title") or hasattr(exp, "role"):
+                role_val = getattr(exp, "job_title", None) or getattr(exp, "role", None)
+            elif isinstance(exp, dict):
+                role_val = exp.get("job_title") or exp.get("role")
+            else:
+                role_val = None
             if role_val:
                 target_roles = [role_val]
                 break

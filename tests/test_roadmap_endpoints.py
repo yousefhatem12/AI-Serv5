@@ -25,6 +25,7 @@ def test_generate_and_get_roadmap_endpoint():
     data = response.json()
     assert data["candidate_id"] == "cand_api_201"
     assert data["target_role"] == "DevOps Lead"
+    assert data["generation_source"] in ("llm", "deterministic_fallback")
     assert len(data["phases"]) == 2
 
     # 2. GET Roadmap
@@ -32,6 +33,7 @@ def test_generate_and_get_roadmap_endpoint():
     assert get_res.status_code == 200
     get_data = get_res.json()
     assert get_data["candidate_id"] == "cand_api_201"
+    assert get_data["generation_source"] in ("llm", "deterministic_fallback")
 
     # 3. Update Task Status
     task_id = get_data["phases"][0]["milestones"][0]["tasks"][0]["task_id"]

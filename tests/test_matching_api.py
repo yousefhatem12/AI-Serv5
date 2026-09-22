@@ -63,12 +63,7 @@ def test_matching_api_analyze_endpoint(mock_analyze):
         }
     }
 
-    headers = {
-        "X-LLM-Model": "groq/llama-3.1-8b-instant",
-        "X-LLM-Temperature": "0.2"
-    }
-
-    response = client.post("/api/v1/matches/analyze", json=payload, headers=headers)
+    response = client.post("/api/v1/matches/analyze", json=payload)
     assert response.status_code == 200
     data = response.json()
     assert data["job_id"] == "job_api_test"

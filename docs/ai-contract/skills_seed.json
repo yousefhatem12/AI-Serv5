@@ -2,7 +2,7 @@
   {"skill_id": "skill_python", "canonical_name": "Python", "category": "Programming Languages", "aliases": ["Python 3", "Python programming"]},
   {"skill_id": "skill_java", "canonical_name": "Java", "category": "Programming Languages", "aliases": ["Java 17", "Core Java"]},
   {"skill_id": "skill_cpp", "canonical_name": "C++", "category": "Programming Languages", "aliases": ["CPP", "C Plus Plus"]},
-  {"skill_id": "skill_csharp", "canonical_name": "C#", "category": "Programming Languages", "aliases": ["CSharp", "C Sharp", ".NET"]},
+  {"skill_id": "skill_csharp", "canonical_name": "C#", "category": "Programming Languages", "aliases": ["CSharp", "C Sharp"]},
   {"skill_id": "skill_javascript", "canonical_name": "JavaScript", "category": "Programming Languages", "aliases": ["JS", "ES6", "ECMAScript"]},
   {"skill_id": "skill_typescript", "canonical_name": "TypeScript", "category": "Programming Languages", "aliases": ["TS"]},
   

@@ -1,8 +1,5 @@
 from __future__ import annotations
 import logging
-import pytest
-import groq
-import httpx
 from unittest.mock import patch
 from fastapi.testclient import TestClient
 from src.main import app
@@ -10,6 +7,7 @@ from src.core.logging import setup_logging, get_logger
 
 client = TestClient(app)
 client_no_raise = TestClient(app, raise_server_exceptions=False)
+
 
 def test_setup_logging_initialization():
     """Verify logging is configured properly with desired levels and formatters."""
@@ -24,60 +22,68 @@ def test_setup_logging_initialization():
     setup_logging("INFO")
     assert logging.getLogger().level == logging.INFO
 
-@patch("src.services.matching_service.matching_service.analyze_skill_gap")
-def test_groq_auth_exception_handler_401(mock_analyze):
-    """Verify groq.AuthenticationError returns 401 with LLM_AUTHENTICATION_ERROR."""
-    req = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
-    mock_resp = httpx.Response(status_code=401, request=req)
-    mock_analyze.side_effect = groq.AuthenticationError("Invalid API Key", response=mock_resp, body={"error": "invalid_api_key"})
 
-    payload = {
-        "job_id": "job_auth_err",
-        "candidate_id": "cand_auth_err",
-        "job_requirements": [{"skill_name": "Python"}],
-        "candidate_profile": {"skills": ["Python"]}
-    }
-    response = client.post("/api/v1/matches/analyze", json=payload)
-    assert response.status_code == 401
-    body = response.json()
-    assert body["error"] == "LLM_AUTHENTICATION_ERROR"
-    assert "Invalid or expired Groq API key" in body["detail"]
+def test_repeated_setup_logging_does_not_duplicate_handlers():
+    """Verify multiple setup_logging calls do not add duplicate handlers to root logger."""
+    setup_logging("INFO")
+    root_logger = logging.getLogger()
+    initial_count = len(root_logger.handlers)
 
-@patch("src.services.matching_service.matching_service.analyze_skill_gap")
-def test_groq_rate_limit_exception_handler_429(mock_analyze):
-    """Verify groq.RateLimitError returns 429 with LLM_RATE_LIMIT_ERROR."""
-    req = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
-    mock_resp = httpx.Response(status_code=429, request=req)
-    mock_analyze.side_effect = groq.RateLimitError("Rate limit exceeded", response=mock_resp, body={"error": "rate_limit"})
+    # Repeated invocations with different levels
+    setup_logging("DEBUG")
+    setup_logging("INFO")
+    setup_logging("WARNING")
 
-    payload = {
-        "job_id": "job_rate_err",
-        "candidate_id": "cand_rate_err",
-        "job_requirements": [{"skill_name": "Python"}],
-        "candidate_profile": {"skills": ["Python"]}
-    }
-    response = client.post("/api/v1/matches/analyze", json=payload)
-    assert response.status_code == 429
-    body = response.json()
-    assert body["error"] == "LLM_RATE_LIMIT_ERROR"
-    assert "Groq rate limit exceeded" in body["detail"]
+    assert len(root_logger.handlers) == initial_count
+    setup_logging("INFO")
 
-@patch("src.services.matching_service.matching_service.analyze_skill_gap")
-def test_groq_gateway_exception_handler_502(mock_analyze):
-    """Verify groq.GroqError returns 502 with LLM_GATEWAY_ERROR."""
-    mock_analyze.side_effect = groq.GroqError("Connection reset by peer")
 
-    payload = {
-        "job_id": "job_gw_err",
-        "candidate_id": "cand_gw_err",
-        "job_requirements": [{"skill_name": "Python"}],
-        "candidate_profile": {"skills": ["Python"]}
-    }
-    response = client.post("/api/v1/matches/analyze", json=payload)
-    assert response.status_code == 502
-    body = response.json()
-    assert body["error"] == "LLM_GATEWAY_ERROR"
-    assert "Connection reset by peer" in body["detail"]
+def test_setup_logging_respects_log_level():
+    """Verify root logger level reflects the requested log level string."""
+    setup_logging("DEBUG")
+    assert logging.getLogger().level == logging.DEBUG
+
+    setup_logging("WARNING")
+    assert logging.getLogger().level == logging.WARNING
+
+    setup_logging("INFO")
+    assert logging.getLogger().level == logging.INFO
+
+
+def test_third_party_logger_suppression_when_level_above_debug():
+    """Verify noisy third-party loggers are set to WARNING when level > DEBUG."""
+    setup_logging("INFO")
+    for noisy_lib in ("httpx", "httpcore", "urllib3", "asyncio", "watchfiles"):
+        assert logging.getLogger(noisy_lib).level == logging.WARNING
+
+
+def test_third_party_loggers_not_suppressed_in_debug():
+    """Verify third-party loggers are not forced to WARNING when level is DEBUG."""
+    logging.getLogger("httpx").setLevel(logging.DEBUG)
+    setup_logging("DEBUG")
+    assert logging.getLogger("httpx").level == logging.DEBUG
+    setup_logging("INFO")
+
+
+def test_get_logger_returns_named_logger():
+    """Verify get_logger returns an instance of logging.Logger with the given name."""
+    log = get_logger("my_custom_service")
+    assert isinstance(log, logging.Logger)
+    assert log.name == "my_custom_service"
+
+
+def test_safe_error_message_redaction():
+    """Verify _safe_error_message redacts configured secrets from error strings."""
+    from src.integrations.jooble.ingestion import _safe_error_message
+
+    fake_secret = "test-secret-token-xyz-12345"
+    with patch("src.integrations.jooble.ingestion.settings.JOOBLE_API_KEY", fake_secret):
+        exc = RuntimeError(f"Failed to connect to API with key {fake_secret}")
+        redacted = _safe_error_message(exc)
+        assert fake_secret not in redacted
+        assert "[REDACTED]" in redacted
+
+
 
 @patch("src.services.matching_service.matching_service.analyze_skill_gap")
 def test_unhandled_server_exception_handler_500(mock_analyze):
@@ -94,4 +100,22 @@ def test_unhandled_server_exception_handler_500(mock_analyze):
     assert response.status_code == 500
     body = response.json()
     assert body["error"] == "INTERNAL_SERVER_ERROR"
-    assert "unexpected internal server error" in body["detail"]
+    assert "unexpected internal server error" in body["detail"].lower()
+
+
+@patch("src.services.matching_service.matching_service.analyze_skill_gap")
+def test_provider_neutral_error_bubbles_to_500(mock_analyze):
+    """Verify provider-neutral runtime errors bubble up to standard 500 handler."""
+    mock_analyze.side_effect = Exception("Upstream model provider error")
+
+    payload = {
+        "job_id": "job_provider_err",
+        "candidate_id": "cand_provider_err",
+        "job_requirements": [{"skill_name": "Python"}],
+        "candidate_profile": {"skills": ["Python"]}
+    }
+    response = client_no_raise.post("/api/v1/matches/analyze", json=payload)
+    assert response.status_code == 500
+    body = response.json()
+    assert body["error"] == "INTERNAL_SERVER_ERROR"
+    assert "unexpected internal server error" in body["detail"].lower()

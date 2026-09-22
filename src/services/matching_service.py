@@ -175,12 +175,16 @@ class MatchingService:
 
         # Determine skills container from candidate_profile
         skills_list = []
-        if hasattr(candidate_profile, "skills"):
+        if hasattr(candidate_profile, "candidate_skills"):
+            skills_list = candidate_profile.candidate_skills
+            if hasattr(candidate_profile, "candidate_id") and candidate_profile.candidate_id:
+                cand_id_str = candidate_profile.candidate_id
+        elif hasattr(candidate_profile, "skills"):
             skills_list = candidate_profile.skills
             if hasattr(candidate_profile, "candidate_id") and candidate_profile.candidate_id:
                 cand_id_str = candidate_profile.candidate_id
         elif isinstance(candidate_profile, dict):
-            skills_list = candidate_profile.get("skills", [])
+            skills_list = candidate_profile.get("candidate_skills") or candidate_profile.get("skills", [])
             cand_id_str = candidate_profile.get("candidate_id", candidate_id)
 
         for s in skills_list:

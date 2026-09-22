@@ -49,7 +49,7 @@ class RedisManager:
     def is_available(self, force_refresh: bool = False) -> bool:
         """
         Fast, non-blocking check to determine if Redis is reachable.
-        Caches the status for a brief duration (3s) to prevent socket thrashing.
+        Caches the status for a brief duration (30.0s) to prevent socket thrashing.
         """
         now = time.time()
         if not force_refresh and (now - self._last_health_check_time) < self._health_check_cache_ttl:
@@ -72,7 +72,8 @@ class RedisManager:
         if self._pool:
             self._pool.disconnect()
             self._pool = None
-            self._last_health_status = False
+        self._last_health_status = False
+        self._last_health_check_time = 0.0
 
 # Global singleton
 redis_manager = RedisManager()

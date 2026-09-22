@@ -36,6 +36,20 @@ def test_alias_resolution():
     assert pg_match.skill_id in ["skill_postgresql", "skill_sql"]
 
 
+def test_distinct_explicit_terms_are_not_collapsed_into_related_skills():
+    tax = TaxonomyManager()
+
+    csharp_id, csharp_name = tax.resolve("C#")
+    dotnet_id, dotnet_name = tax.resolve(".NET")
+    alias_id, alias_name = tax.resolve("Python 3")
+    unknown_id, unknown_name = tax.resolve("Unlisted-Explicit-Tool")
+
+    assert (csharp_id, csharp_name) == ("skill_csharp", "C#")
+    assert (dotnet_id, dotnet_name) != (csharp_id, csharp_name)
+    assert (alias_id, alias_name) == ("skill_python", "Python")
+    assert (unknown_id, unknown_name) == (None, "Unlisted-Explicit-Tool")
+
+
 def test_unseen_skill_normalization():
     tax = TaxonomyManager()
     skill_id, canonical_name, category = tax.normalize_skill("FastAPI Framework", strict=True)

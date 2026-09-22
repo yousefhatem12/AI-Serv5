@@ -59,7 +59,7 @@ def test_role_fit_unrelated_role():
 def test_role_fit_fallbacks():
     """Verify fallback to candidate work history or neutral 50.0."""
     # Fallback to experience
-    exp = [ExperienceItem(role="Backend Engineer", company="Tech Co")]
+    exp = [ExperienceItem(job_title="Backend Engineer", company_name="Tech Co")]
     score = calculate_role_fit(candidate_target_roles=[], job_title="Backend Developer", candidate_experience=exp)
     assert score == 100.0
 

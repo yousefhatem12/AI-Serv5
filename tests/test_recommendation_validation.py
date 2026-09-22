@@ -83,8 +83,8 @@ def _candidate(candidate_id="acceptance_candidate"):
             ),
         ),
         skills=[
-            CandidateSkill(skill_id="skill_python", name="Python", level=SkillLevel.ADVANCED),
-            CandidateSkill(skill_id="skill_fastapi", name="FastAPI", level=SkillLevel.ADVANCED),
+            CandidateSkill(skill_id="skill_python", name="Python", proficiency="advanced"),
+            CandidateSkill(skill_id="skill_fastapi", name="FastAPI", proficiency="advanced"),
         ],
     )
 

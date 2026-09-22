@@ -13,7 +13,6 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from src.core.config import settings
 from src.core.llm import get_llm, parse_json_response
 
 from .models import JobRequirementProfile, RawSkillItem
@@ -33,20 +32,25 @@ class JobLLMExtractor:
     def __init__(self, llm=None):
         self.llm = llm
 
-    def _llm_available(self) -> bool:
-        if self.llm is not None and hasattr(self.llm, "is_available"):
-            return bool(self.llm.is_available())
+    def _get_active_llm(self):
         if self.llm is not None:
-            return True
-        llm_settings = settings.get_llm_settings()
-        return bool(llm_settings.api_key) or bool(llm_settings.base_url)
+            if hasattr(self.llm, "is_available") and not self.llm.is_available():
+                raise ValueError(
+                    "LLM service is not configured. Set LLM_PROVIDER, LLM_MODEL, and LLM_API_KEY."
+                )
+            return self.llm
+        try:
+            return get_llm()
+        except Exception as exc:
+            raise ValueError(
+                f"LLM service is not configured. Set LLM_PROVIDER, LLM_MODEL, and LLM_API_KEY. ({exc})"
+            ) from exc
 
     def _generate_json(self, prompt: str, system_prompt: str):
-        if self.llm is not None and hasattr(self.llm, "generate_json"):
-            return self.llm.generate_json(prompt=prompt, system_prompt=system_prompt)
-        if self.llm is None:
-            self.llm = get_llm()
-        response = self.llm.invoke([("system", system_prompt), ("user", prompt)])
+        active_llm = self._get_active_llm()
+        if hasattr(active_llm, "generate_json"):
+            return active_llm.generate_json(prompt=prompt, system_prompt=system_prompt)
+        response = active_llm.invoke([("system", system_prompt), ("user", prompt)])
         return parse_json_response(str(getattr(response, "content", response)))
 
     def extract(self, job_description: str) -> dict[str, Any]:
@@ -55,15 +59,9 @@ class JobLLMExtractor:
         raw validated dict (pre-normalization).
 
         Raises:
-            ValueError: if the LLM is unavailable, returns invalid JSON,
+            ValueError: if the LLM is unconfigured, returns invalid JSON,
                         or fails Pydantic schema validation.
         """
-        if not self._llm_available():
-            raise ValueError(
-                "LLM service is not available. "
-                "Configure a valid LLM provider API key (GROQ_API_KEY, GEMINI_API_KEY, etc.)."
-            )
-
         system_prompt, user_prompt = build_prompt(job_description)
 
         try:
@@ -71,6 +69,8 @@ class JobLLMExtractor:
                 prompt=user_prompt,
                 system_prompt=system_prompt,
             )
+        except ValueError:
+            raise
         except Exception as e:
             logger.error("LLM call failed during job description extraction: %s", e, exc_info=True)
             raise ValueError(f"LLM extraction failed: {e}") from e

@@ -2,20 +2,26 @@ from __future__ import annotations
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
-# Canonical Day 1 Candidate Schemas
+# Canonical Candidate Schemas directly aligned with backend schema
 from src.models.candidate import (
     Candidate,
-    CandidateProfileDetails,
     CandidatePreferences,
+    CandidateProfile,
+    CandidateProfileDetails,
     CandidateSkill,
-    EvidenceItem,
-    EducationItem,
-    ExperienceItem,
-    ProjectItem,
+    CertificateItem,
     CertificationItem,
+    EducationItem,
+    EvidenceItem,
+    ExperienceItem,
+    LanguageItem,
+    ProjectItem,
+    RawSkillItem,
+    UserProfile,
+    normalize_backend_date,
 )
 
-# Backward-compatible aliases for any initial baseline code
+# Baseline aliases
 Education = EducationItem
 preferences = CandidatePreferences
 SkillEvidence = EvidenceItem
@@ -23,16 +29,22 @@ ExtractedCandiateSkill = CandidateSkill
 
 __all__ = [
     "Candidate",
-    "CandidateProfileDetails",
     "CandidatePreferences",
+    "CandidateProfile",
+    "CandidateProfileDetails",
     "CandidateSkill",
-    "EvidenceItem",
-    "EducationItem",
-    "ExperienceItem",
-    "ProjectItem",
+    "CertificateItem",
     "CertificationItem",
     "Education",
+    "EducationItem",
+    "EvidenceItem",
+    "ExperienceItem",
+    "ExtractedCandiateSkill",
+    "LanguageItem",
+    "ProjectItem",
+    "RawSkillItem",
+    "UserProfile",
+    "normalize_backend_date",
     "preferences",
     "SkillEvidence",
-    "ExtractedCandiateSkill",
 ]

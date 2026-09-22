@@ -4,44 +4,30 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-import groq
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-# pyrefly: ignore [missing-import]
-from src.api.routers.cv_router import router as cv_router
-from src.api.routers.job_router import router as job_router
-from src.api.schemas.cv_schemas import ExtractionErrorResponse
-from src.api.security import check_rate_limit, verify_api_key
-from src.api.v1.routers import (
-    matches_router,
-    review_queue_router,
-    roadmap_router,
-    recommendations_router,
-    router as interview_router,
-)
-# pyrefly: ignore [missing-import]
-from src.core.config import get_app_settings, settings
-# pyrefly: ignore [missing-import]
+
+from src.api.security import verify_api_key
+from src.api.v1.routers import api_router
+from src.core.config import settings
+from src.core.logging import setup_logging
 from src.core.redis import is_redis_available, redis_manager
-# pyrefly: ignore [missing-import]
 from src.db.base import init_db
-# pyrefly: ignore [missing-import]
-from src.middleware.llm_middleware import DynamicLLMMiddleware
-# pyrefly: ignore [missing-import]
 from src.middleware.rate_limit_middleware import RateLimitMiddleware
+from src.schemas.cv import ExtractionErrorResponse
 
 load_dotenv()
 logger = logging.getLogger(__name__)
-app_settings = get_app_settings()
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    """Initialize persistence and release shared resources on shutdown."""
+    """Initialize logging, persistence, and release shared resources on shutdown."""
+    setup_logging()
     init_db()
     if is_redis_available():
         logger.info("Redis is available at %s", settings.REDIS_URL)
@@ -64,23 +50,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Request-scoped model/key/base-url overrides are disabled by default. They can
-# be enabled explicitly for a trusted development environment only.
-app.add_middleware(
-    DynamicLLMMiddleware,
-    allow_overrides=settings.LLM_ALLOW_REQUEST_OVERRIDES,
-)
-
 # Rate-limit feature endpoints centrally. The canonical CV router keeps its
 # existing dependency-based limiter so its original contract remains intact.
 app.add_middleware(RateLimitMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=app_settings.cors_allowed_origins,
-    allow_credentials=app_settings.cors_allow_credentials,
-    allow_methods=app_settings.cors_allowed_methods,
-    allow_headers=app_settings.cors_allowed_headers,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
+    allow_methods=settings.CORS_ALLOWED_METHODS,
+    allow_headers=settings.CORS_ALLOWED_HEADERS,
 )
 
 
@@ -121,39 +100,6 @@ async def validation_exception_handler(_: Request, exc: RequestValidationError):
     )
 
 
-@app.exception_handler(groq.AuthenticationError)
-async def groq_auth_exception_handler(_: Request, __: groq.AuthenticationError):
-    return JSONResponse(
-        status_code=401,
-        content={
-            "error": "LLM_AUTHENTICATION_ERROR",
-            "detail": "Invalid or expired Groq API key. Configure GROQ_API_KEY or provide a request-level LLM token.",
-        },
-    )
-
-
-@app.exception_handler(groq.RateLimitError)
-async def groq_rate_limit_exception_handler(_: Request, __: groq.RateLimitError):
-    return JSONResponse(
-        status_code=429,
-        content={
-            "error": "LLM_RATE_LIMIT_ERROR",
-            "detail": "Groq rate limit exceeded. Please retry after a brief delay.",
-        },
-    )
-
-
-@app.exception_handler(groq.GroqError)
-async def groq_gateway_exception_handler(_: Request, exc: groq.GroqError):
-    return JSONResponse(
-        status_code=502,
-        content={
-            "error": "LLM_GATEWAY_ERROR",
-            "detail": f"Error communicating with LLM provider: {exc}",
-        },
-    )
-
-
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     logger.error("Unhandled error on %s %s: %s", request.method, request.url.path, exc, exc_info=True)
@@ -167,28 +113,17 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     )
 
 
-# CV routes already carry the stable /api/v1/cv prefix from AI-Serv5.
-app.include_router(cv_router, dependencies=[Depends(check_rate_limit), Depends(verify_api_key)])
-
-# The rest of the feature routes use the shared version prefix and inherit the
-# global rate limiter. API-key protection is applied consistently here too.
-for feature_router in (
-    interview_router,
-    matches_router,
-    review_queue_router,
-    job_router,
-    roadmap_router,
-    recommendations_router,
-):
-    app.include_router(
-        feature_router,
-        prefix=settings.API_V1_STR,
-        dependencies=[Depends(verify_api_key)],
-    )
+# Mount aggregated API v1 router. All /api/v1 endpoints inherit API-key verification.
+# CV extraction additionally enforces its route-level rate limiter dependency.
+app.include_router(
+    api_router,
+    prefix=settings.API_V1_STR,
+    dependencies=[Depends(verify_api_key)],
+)
 
 
-# Ensure database-backed feature routes work for TestClient and simple local
-# runs even when the server lifespan is not explicitly entered.
+# Ensure database-backed feature routes work for TestClient and standalone local
+# invocations even when the FastAPI server lifespan is not explicitly entered.
 init_db()
 
 

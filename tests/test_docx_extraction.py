@@ -8,8 +8,9 @@ def test_docx_extraction():
     docx_path = Path(__file__).parent / "samples" / "yousef_hatem_cv.docx"
     assert docx_path.exists(), "Sample docx file missing"
 
-    extracted_text, doc_format = loader.load_text(str(docx_path))
+    extracted_text, doc_format, doc_links = loader.load_text(str(docx_path))
     assert doc_format == "docx"
     assert isinstance(extracted_text, str)
     assert len(extracted_text.strip()) > 0
+    assert isinstance(doc_links, list)
 

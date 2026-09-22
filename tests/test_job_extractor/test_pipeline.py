@@ -371,5 +371,14 @@ class TestLLMUnavailable:
         pipeline = JobExtractionPipeline(taxonomy_manager=taxonomy)
         pipeline.extractor.llm = mock_llm
 
-        with pytest.raises(ValueError, match="LLM service is not available"):
+        with pytest.raises(ValueError, match="LLM service is not configured"):
             pipeline.extract("This is a job description with more than 50 characters of content.")
+
+    def test_raises_value_error_when_canonical_llm_fails(self):
+        taxonomy = _make_taxonomy()
+        pipeline = JobExtractionPipeline(taxonomy_manager=taxonomy)
+        pipeline.extractor.llm = None
+
+        with patch("src.job_extractor.llm_extractor.get_llm", side_effect=RuntimeError("connection error")):
+            with pytest.raises(ValueError, match="LLM service is not configured"):
+                pipeline.extract("This is a job description with more than 50 characters of content.")

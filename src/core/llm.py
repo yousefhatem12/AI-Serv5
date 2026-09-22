@@ -3,25 +3,40 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
-from typing import Any, Optional
+from typing import Any
 
 from langchain.chat_models import init_chat_model
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from src.core.config import LLMSettings, settings
-from src.middleware.llm_middleware import get_llm_context
 
 logger = logging.getLogger(__name__)
 
-_CREDENTIAL_PROVIDERS = {"gemini", "google", "openai", "groq", "anthropic", "mistral", "deepseek"}
-_LOCAL_PROVIDERS = {"ollama", "vllm"}
+_CREDENTIAL_PROVIDERS = {"gemini", "google", "openai", "groq"}
 
 
-def _is_local_endpoint(base_url: str | None) -> bool:
-    if not base_url:
-        return False
-    return any(host in base_url.lower() for host in ("localhost", "127.0.0.1", "::1"))
+def estimate_token_count(text: str) -> int:
+    """Heuristic token estimation: ~4 characters per token for English & code."""
+    if not text:
+        return 0
+    return max(1, math.ceil(len(text) / 4.0))
+
+
+def truncate_to_token_limit(
+    text: str, max_tokens: int, suffix: str = "\n... [Context truncated to fit limit]"
+) -> str:
+    """Truncates input text if its estimated token count exceeds max_tokens."""
+    if not text or max_tokens <= 0:
+        return ""
+
+    current_tokens = estimate_token_count(text)
+    if current_tokens <= max_tokens:
+        return text
+
+    target_char_count = max(0, (max_tokens * 4) - len(suffix))
+    return text[:target_char_count] + suffix
 
 
 def parse_json_response(raw_text: str) -> dict[str, Any] | list[Any]:
@@ -60,98 +75,71 @@ def parse_json_response(raw_text: str) -> dict[str, Any] | list[Any]:
     raise ValueError(f"Failed to extract valid JSON from LLM response: {snippet}")
 
 
-def get_llm(
-    model: Optional[str] = None,
-    temperature: Optional[float] = None,
-    api_key: Optional[str] = None,
-    base_url: Optional[str] = None,
-    max_tokens: Optional[int] = None,
-    provider: Optional[str] = None,
-    timeout: Optional[float] = None,
-    max_retries: Optional[int] = None,
-    **kwargs: Any,
-) -> BaseChatModel:
+def get_llm() -> BaseChatModel:
     """Build the configured chat model through one canonical path.
 
-    Explicit arguments are useful for trusted internal composition. Request
-    context is only populated when the application explicitly enables the
-    override middleware; no provider fallback is performed here.
+    Configuration source is solely settings.llm (loaded from .env).
+    There is no alternative HTTP-request configuration path, no per-call parameter
+    overrides, and no provider/model fallback.
     """
-    ctx = get_llm_context()
     llm_settings = settings.get_llm_settings()
 
-    raw_model = model if model is not None else (ctx.model_name if ctx else None)
-    raw_model = raw_model or llm_settings.model_name
-    effective_provider = provider or (ctx.provider if ctx else None) or llm_settings.provider
-    parsed_provider, model_name = settings.parse_provider_and_model(raw_model, effective_provider)
-    parsed_provider = LLMSettings.validate_provider(parsed_provider)
+    provider_raw = llm_settings.provider
+    if not provider_raw or not provider_raw.strip():
+        raise ValueError("LLM_PROVIDER is required; set a supported provider.")
+    parsed_provider = LLMSettings.validate_provider(provider_raw)
 
-    resolved_temp = (
-        temperature
-        if temperature is not None
-        else (ctx.temperature if ctx and ctx.temperature is not None else llm_settings.temperature)
-    )
-    resolved_base_url = (
-        base_url
-        if base_url is not None
-        else (ctx.base_url if ctx and ctx.base_url else llm_settings.base_url)
-    )
-    resolved_api_key = (
-        api_key
-        if api_key is not None
-        else (ctx.api_token if ctx and ctx.api_token else llm_settings.api_key)
-    )
-    resolved_max_tokens = max_tokens if max_tokens is not None else llm_settings.max_tokens
-    resolved_timeout = timeout if timeout is not None else llm_settings.timeout
-    resolved_retries = max_retries if max_retries is not None else llm_settings.max_retries
+    model_name = (llm_settings.model_name or "").strip()
+    if not model_name:
+        raise ValueError("LLM_MODEL is required; set a non-empty model identifier.")
 
-    if parsed_provider in _CREDENTIAL_PROVIDERS and not resolved_api_key:
+    api_key = (llm_settings.api_key or "").strip() if llm_settings.api_key else None
+    if parsed_provider in _CREDENTIAL_PROVIDERS and not api_key:
         raise ValueError(f"LLM_API_KEY is required for provider '{parsed_provider}'")
-    if parsed_provider == "custom" and resolved_base_url and not _is_local_endpoint(resolved_base_url) and not resolved_api_key:
-        raise ValueError("LLM_API_KEY is required for non-local custom LLM endpoints")
 
     langchain_provider = {"gemini": "google_genai", "google": "google_genai"}.get(
         parsed_provider, parsed_provider
     )
-    model_kwargs = dict(kwargs)
-    model_kwargs.setdefault("max_retries", resolved_retries)
+    model_kwargs: dict[str, Any] = {
+        "max_retries": llm_settings.max_retries,
+    }
 
     # Keep provider-specific constructor names at this boundary; feature code
     # never needs to know which SDK keyword a provider expects.
     if parsed_provider in ("gemini", "google"):
-        model_kwargs.setdefault("timeout", resolved_timeout)
-        model_kwargs["google_api_key"] = resolved_api_key
-        if resolved_base_url:
-            model_kwargs["client_options"] = {"api_endpoint": resolved_base_url}
+        model_kwargs["timeout"] = llm_settings.timeout
+        model_kwargs["google_api_key"] = api_key
+        if llm_settings.base_url:
+            model_kwargs["client_options"] = {"api_endpoint": llm_settings.base_url}
     elif parsed_provider == "groq":
-        model_kwargs.setdefault("request_timeout", resolved_timeout)
-        model_kwargs["groq_api_key"] = resolved_api_key
-        if resolved_base_url:
-            model_kwargs["groq_api_base"] = resolved_base_url
-    elif parsed_provider == "anthropic":
-        model_kwargs.setdefault("timeout", resolved_timeout)
-        model_kwargs["anthropic_api_key"] = resolved_api_key
-        if resolved_base_url:
-            model_kwargs["base_url"] = resolved_base_url
+        model_kwargs["request_timeout"] = llm_settings.timeout
+        model_kwargs["groq_api_key"] = api_key
+        if llm_settings.base_url:
+            model_kwargs["groq_api_base"] = llm_settings.base_url
     else:
-        model_kwargs.setdefault("timeout", resolved_timeout)
-        if resolved_api_key:
-            model_kwargs["api_key"] = resolved_api_key
-        if resolved_base_url:
-            model_kwargs["base_url"] = resolved_base_url
+        model_kwargs["timeout"] = llm_settings.timeout
+        if api_key:
+            model_kwargs["api_key"] = api_key
+        if llm_settings.base_url:
+            model_kwargs["base_url"] = llm_settings.base_url
 
     logger.debug(
         "Initializing LLM provider=%s model=%s temperature=%s timeout=%s retries=%s",
         parsed_provider,
         model_name,
-        resolved_temp,
-        resolved_timeout,
-        resolved_retries,
+        llm_settings.temperature,
+        llm_settings.timeout,
+        llm_settings.max_retries,
     )
-    return init_chat_model(
-        model=model_name,
-        model_provider=langchain_provider,
-        temperature=resolved_temp,
-        max_tokens=resolved_max_tokens,
-        **model_kwargs,
-    )
+    try:
+        return init_chat_model(
+            model=model_name,
+            model_provider=langchain_provider,
+            temperature=llm_settings.temperature,
+            max_tokens=llm_settings.max_tokens,
+            **model_kwargs,
+        )
+    except Exception as exc:
+        raise ValueError(
+            f"Failed to initialize LLM provider '{parsed_provider}' with model '{model_name}': {exc}"
+        ) from exc

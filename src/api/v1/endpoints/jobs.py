@@ -17,8 +17,8 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from src.api.dependencies import get_job_pipeline
-from src.api.schemas.cv_schemas import ExtractionErrorResponse
-from src.api.schemas.job_schemas import JobAnalysisRequest, JobAnalysisResponse
+from src.schemas.cv import ExtractionErrorResponse
+from src.schemas.job import JobAnalysisRequest, JobAnalysisResponse
 from src.db.repositories.job_requirement_repository import JobRequirementRepository
 from src.job_extractor.pipeline import JobExtractionPipeline
 

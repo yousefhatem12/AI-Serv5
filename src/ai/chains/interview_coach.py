@@ -2,8 +2,7 @@ from __future__ import annotations
 from typing import Optional, List, Any
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.prompts import PromptTemplate
-from src.core.llm import get_llm
-from src.middleware.llm_middleware import truncate_to_token_limit
+from src.core.llm import get_llm, truncate_to_token_limit
 from src.schemas.interview import QuestionSetResponse, AnswerEvaluationResponse
 
 QUESTION_GEN_PROMPT = """
@@ -35,33 +34,19 @@ class InterviewCoachChains:
     def __init__(
         self,
         llm: Optional[Any] = None,
-        model_name: Optional[str] = None,
-        temperature: Optional[float] = None,
-        base_url: Optional[str] = None,
-        api_key: Optional[str] = None,
     ):
         """
         Initializes the interview coach chains.
         If an explicit LLM is provided, it is retained.
-        Otherwise, delegates dynamically to get_llm() per request, allowing
-        dynamic header overrides (base_url, model_name, api_token) to take effect.
+        Otherwise, delegates to canonical get_llm().
         """
         self._custom_llm = llm
-        self.model_name = model_name
-        self.temperature = temperature
-        self.base_url = base_url
-        self.api_key = api_key
 
     def get_active_llm(self) -> BaseChatModel:
-        """Resolves the active LLM based on explicit args, request context, or .env defaults."""
+        """Resolves the active LLM from injected instance or canonical get_llm()."""
         if self._custom_llm is not None:
             return self._custom_llm
-        return get_llm(
-            model=self.model_name,
-            temperature=self.temperature,
-            base_url=self.base_url,
-            api_key=self.api_key,
-        )
+        return get_llm()
 
     @property
     def llm(self) -> BaseChatModel:

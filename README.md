@@ -22,7 +22,7 @@ This repository is the single working copy for the SkillMatch AI services. The f
 
 - CV extraction: `src/cv_extractor` and `src/api/routers/cv_router.py`
 - Unified FastAPI application: `src/api/main.py` (also exported by `src/main.py`)
-- AI adapters, prompts, chains, and tools: `src/ai`
+- AI prompts, chains, and tools: `src/ai`
 - Feature services and schemas: `src/services`, `src/schemas`
 - Persistence and background work: `src/db`, `src/workers`
 

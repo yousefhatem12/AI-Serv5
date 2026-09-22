@@ -1,181 +1,66 @@
 from __future__ import annotations
-from unittest.mock import MagicMock
+
+import pytest
 
 from src.core.llm import parse_json_response
-from src.cv_extractor.llm_extractor import LLMExtractor
+from src.cv_extractor.llm_extractor import CVExtractionError, LLMExtractor
 from src.cv_extractor.pipeline import CVExtractionPipeline
-from src.models.candidate import Candidate, CVExtractionSchema
+from src.models.candidate import CVExtractionSchema
 
 
-class TestSchemaValidationAndRobustness:
-    def test_p1_null_raw_skills_does_not_crash_pipeline(self):
-        """P1 Test: LLM returning {'name': 'LLM User', 'raw_skills': None} must not crash pipeline with TypeError."""
-        mock_llm = MagicMock()
-        mock_llm.is_available.return_value = True
-        mock_llm.generate_json.return_value = {
-            "name": "Sample Candidate",
-            "email": "user@example.com",
-            "location": "Cairo, Egypt",
-            "raw_skills": None,
-            "experience": None,
-            "projects": None,
-            "education": None,
-            "target_roles": None,
-            "certifications": None,
-        }
+def test_schema_still_coerces_null_collection_values():
+    result = CVExtractionSchema.model_validate({"raw_skills": None, "projects": None, "experience": None})
+    assert result.raw_skills == []
+    assert result.projects == []
+    assert result.experiences == []
 
-        extractor = LLMExtractor(llm=mock_llm)
-        pipeline = CVExtractionPipeline(extractor=extractor)
 
-        cv_text = "Sample Candidate\nEmail: user@example.com\nLocation: Cairo, Egypt\n"
-        candidate = pipeline.extract_from_text(cv_text, candidate_id="cand_test_001")
+def test_invalid_structured_output_is_controlled_without_fallback():
+    class InvalidLLM:
+        def is_available(self):
+            return True
 
-        assert isinstance(candidate, Candidate)
-        assert candidate.profile.name == "Sample Candidate"
-        assert candidate.skills == []
-        assert candidate.experience == []
-        assert candidate.projects == []
-        assert candidate.profile.education == []
+        def generate_json(self, prompt, system_prompt):
+            return "not JSON"
 
-    def test_cvextraction_schema_coercion_of_nulls(self):
-        """CVExtractionSchema must coerce None list fields to empty lists."""
-        raw_data = {
-            "name": "Jane Doe",
-            "raw_skills": None,
-            "experience": None,
-            "projects": None,
-            "education": None,
-            "target_roles": None,
-            "certifications": None,
-        }
+    with pytest.raises(CVExtractionError):
+        LLMExtractor(llm=InvalidLLM()).extract_entities("Avery", sections={})
 
-        schema = CVExtractionSchema.model_validate(raw_data)
-        assert schema.raw_skills == []
-        assert schema.experience == []
-        assert schema.projects == []
-        assert schema.education == []
-        assert schema.target_roles == []
-        assert schema.certifications == []
 
-    def test_experience_and_project_subfields_coercion(self):
-        """ExperienceItem and ProjectItem must coerce null technologies/responsibilities/description."""
-        raw_data = {
-            "name": "Engineer",
-            "experience": [
-                {
-                    "role": "Software Developer",
-                    "company": "Tech Corp",
-                    "responsibilities": None,
-                    "technologies": None,
-                }
-            ],
-            "projects": [
-                {
-                    "title": "API Gateway",
-                    "description": None,
-                    "technologies": None,
-                    "link": None,
-                }
-            ]
-        }
+def test_schema_coerces_nullable_nested_collections_without_inventing_values():
+    schema = CVExtractionSchema.model_validate({
+        "experiences": [{"job_title": "Builder", "technologies": None}],
+        "projects": [{"title": "Record", "description": None, "technologies": None}],
+    })
 
-        schema = CVExtractionSchema.model_validate(raw_data)
-        assert schema.experience[0].responsibilities == []
-        assert schema.experience[0].technologies == []
-        assert schema.projects[0].description == ""
-        assert schema.projects[0].technologies == []
+    assert schema.experiences[0].company_name is None
+    assert schema.experiences[0].technologies == []
+    assert schema.projects[0].description is None
+    assert schema.projects[0].technologies == []
 
-    def test_malformed_llm_output_falls_back_to_heuristic(self):
-        """Malformed LLM response (non-dict or invalid schema) safely falls back to heuristic extractor."""
-        mock_llm = MagicMock()
-        mock_llm.is_available.return_value = True
-        mock_llm.generate_json.side_effect = Exception("Invalid JSON or broken model output")
 
-        extractor = LLMExtractor(llm=mock_llm)
-        pipeline = CVExtractionPipeline(extractor=extractor)
+def test_null_collection_payload_completes_through_the_llm_only_pipeline():
+    class MockLLM:
+        def __init__(self):
+            self.responses = iter([
+                {"user": {"name": "Avery"}, "raw_skills": None, "experience": None, "projects": None},
+                {"complete": True, "missing_paths": [], "unsupported_paths": []},
+            ])
 
-        cv_text = "Ahmed Hassan\nEmail: ahmed@example.com\n\nTECHNICAL SKILLS\nPython, SQL\n"
-        candidate = pipeline.extract_from_text(cv_text, candidate_id="cand_fallback_001")
+        def is_available(self):
+            return True
 
-        assert isinstance(candidate, Candidate)
-        assert "Ahmed" in candidate.profile.name
-        skill_ids = [s.skill_id for s in candidate.skills]
-        assert "skill_python" in skill_ids
+        def generate_json(self, prompt, system_prompt):
+            return next(self.responses)
 
-    def test_generate_json_with_schema_parameter(self):
-        """Canonical JSON parsing plus schema validation remains available."""
-        result = CVExtractionSchema.model_validate(
-            parse_json_response('{"name": "Valid Candidate", "raw_skills": []}')
-        )
-        assert isinstance(result, CVExtractionSchema)
-        assert result.name == "Valid Candidate"
+    candidate = CVExtractionPipeline(extractor=LLMExtractor(llm=MockLLM())).extract_from_text("Avery")
 
-    def test_pipeline_zero_fake_skills_extraction(self):
-        """Pipeline must discard unknown hallucinated skills or random names, retaining only canonical skills."""
-        mock_llm = MagicMock()
-        mock_llm.is_available.return_value = True
-        mock_llm.generate_json.return_value = {
-            "name": "Candidate With Hallucinations",
-            "email": "cand@example.com",
-            "raw_skills": ["Python", "John Doe", "NonExistentTool123", "FastAPI", "Random Phrase That Is Not Tech"],
-            "experience": [],
-            "projects": [],
-            "education": [],
-            "target_roles": [],
-            "certifications": [],
-        }
+    assert candidate.user.name == "Avery"
+    assert candidate.candidate_skills == []
+    assert candidate.experiences == []
+    assert candidate.projects == []
 
-        extractor = LLMExtractor(llm=mock_llm)
-        pipeline = CVExtractionPipeline(extractor=extractor)
 
-        cv_text = "John Doe\nCandidate With Hallucinations\nEmail: cand@example.com\n\nSkills:\nPython, FastAPI, John Doe, NonExistentTool123, Random Phrase That Is Not Tech"
-        candidate = pipeline.extract_from_text(cv_text, candidate_id="cand_clean_001")
-        skill_ids = [s.skill_id for s in candidate.skills]
-
-        # Valid canonical skills must be retained
-        assert "skill_python" in skill_ids
-        assert "skill_fastapi" in skill_ids
-
-        # Fake / noise skills must NOT exist
-        assert "skill_john_doe" not in skill_ids
-        assert "skill_nonexistenttool123" not in skill_ids
-        assert not any("john" in s.lower() for s in skill_ids)
-        assert not any("nonexistent" in s.lower() for s in skill_ids)
-
-    def test_pipeline_preserves_llm_skill_proficiency_levels(self):
-        """Pipeline must respect LLM-provided proficiency level (e.g. expert) even when evidence is from skills section only."""
-        from src.models.common import SkillLevel
-
-        mock_llm = MagicMock()
-        mock_llm.is_available.return_value = True
-        mock_llm.generate_json.return_value = {
-            "name": "Senior Architect",
-            "email": "architect@example.com",
-            "raw_skills": [
-                {"name": "Python", "level": "expert"},
-                {"name": "FastAPI", "level": "advanced"},
-                {"name": "Docker", "level": "intermediate"},
-            ],
-            "experience": [],
-            "projects": [],
-            "education": [],
-            "target_roles": [],
-            "certifications": [],
-        }
-
-        extractor = LLMExtractor(llm=mock_llm)
-        pipeline = CVExtractionPipeline(extractor=extractor)
-
-        cv_text = "Senior Architect\nEmail: architect@example.com\n\nTechnical Skills:\nPython, FastAPI, Docker"
-        candidate = pipeline.extract_from_text(cv_text, candidate_id="cand_levels_001")
-
-        skills_by_id = {s.skill_id: s for s in candidate.skills}
-        assert "skill_python" in skills_by_id
-        assert skills_by_id["skill_python"].level == SkillLevel.EXPERT
-
-        assert "skill_fastapi" in skills_by_id
-        assert skills_by_id["skill_fastapi"].level == SkillLevel.ADVANCED
-
-        assert "skill_docker" in skills_by_id
-        assert skills_by_id["skill_docker"].level == SkillLevel.INTERMEDIATE
-
+def test_json_response_parser_remains_available_for_structured_runtime_payloads():
+    parsed = parse_json_response('{"user": {"name": "Avery"}, "raw_skills": []}')
+    assert CVExtractionSchema.model_validate(parsed).user.name == "Avery"

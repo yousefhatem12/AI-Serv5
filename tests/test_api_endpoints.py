@@ -42,13 +42,7 @@ def test_generate_interview_questions_api(mock_create_prep):
         "include_essay": True
     }
 
-    # Pass dynamic header overrides as well
-    headers = {
-        "X-LLM-Model": "groq/llama-3.1-8b-instant",
-        "X-LLM-Temperature": "0.4"
-    }
-
-    response = client.post("/api/v1/interview/generate", json=payload, headers=headers)
+    response = client.post("/api/v1/interview/generate", json=payload)
     assert response.status_code == 200
     res_data = response.json()
     assert res_data["job_id"] == "job_test_1"

@@ -1,4 +1,5 @@
 from __future__ import annotations
+import hashlib
 import time
 import logging
 import threading
@@ -115,10 +116,15 @@ class RedisRateLimiter:
         if key is not None:
             client.delete(self._get_key(key))
         else:
-            pattern = f"{self.prefix}*"
-            keys = client.keys(pattern)
-            if keys:
-                client.delete(*keys)
+            batch_size = 100
+            batch = []
+            for k in client.scan_iter(match=f"{self.prefix}*", count=batch_size):
+                batch.append(k)
+                if len(batch) >= batch_size:
+                    client.delete(*batch)
+                    batch.clear()
+            if batch:
+                client.delete(*batch)
 
 
 class HybridRateLimiter:
@@ -157,22 +163,25 @@ class HybridRateLimiter:
 
 def get_client_ip(request: Request) -> str:
     """
-    Resolves client IP address safely from request headers, taking into
-    account reverse proxies and load balancers (e.g. Nginx, Cloudflare, AWS ALB).
+    Resolves client rate-limit identity safely and deterministically.
+
+    Identity precedence:
+      1. Authenticated X-API-Key: SHA-256 hashed digest to prevent secret leakage
+         in Redis keys, in-memory state, and logs.
+      2. X-Client-ID: application client identifier (only if no API key is present).
+      3. Immediate peer address (request.client.host) as network fallback.
+
+    Untrusted proxy headers (X-Forwarded-For, X-Real-IP) are not blindly trusted
+    in the absence of an explicit trusted-proxy configuration.
     """
-    client_key = request.headers.get("x-client-id") or request.headers.get("x-api-key")
-    if client_key:
-        return f"key:{client_key.strip()}"
+    api_key = request.headers.get("x-api-key")
+    if api_key and api_key.strip():
+        digest = hashlib.sha256(api_key.strip().encode("utf-8")).hexdigest()
+        return f"key:{digest}"
 
-    forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        client_ip = forwarded_for.split(",")[0].strip()
-        if client_ip:
-            return client_ip
-
-    real_ip = request.headers.get("x-real-ip")
-    if real_ip:
-        return real_ip.strip()
+    client_id = request.headers.get("x-client-id")
+    if client_id and client_id.strip():
+        return f"client:{client_id.strip()}"
 
     if request.client and request.client.host:
         return request.client.host

@@ -3,29 +3,27 @@ import pytest
 from src.core.config import Settings, LLMSettings, get_llm_settings
 
 
-def test_settings_provider_and_model_parsing():
-    gemini_settings = Settings(
-        llm=LLMSettings(provider="gemini", model_name="gemini-3.5-flash")
-    )
-    provider, model = gemini_settings.parse_provider_and_model("gemini-3.5-flash")
-    assert (provider, model) == ("gemini", "gemini-3.5-flash")
+def test_supported_provider_validation():
+    assert LLMSettings.validate_provider("gemini") == "gemini"
+    assert LLMSettings.validate_provider("GOOGLE") == "google"
+    assert LLMSettings.validate_provider("openai") == "openai"
+    assert LLMSettings.validate_provider("groq") == "groq"
 
-    groq_settings = Settings(
-        llm=LLMSettings(provider="groq", model_name="mixtral-8x7b-32768", api_key="test-key")
-    )
-    provider, model = groq_settings.parse_provider_and_model("mixtral-8x7b-32768")
-    assert (provider, model) == ("groq", "mixtral-8x7b-32768")
+    with pytest.raises(ValueError, match="Unsupported LLM provider 'unsupported'"):
+        LLMSettings.validate_provider("unsupported")
 
-    provider, model = gemini_settings.parse_provider_and_model("openai/gpt-4o-mini")
-    assert (provider, model) == ("openai", "gpt-4o-mini")
 
-    provider, model = gemini_settings.parse_provider_and_model("custom-model", provider_str="ollama")
-    assert (provider, model) == ("ollama", "custom-model")
-
-    groq_qualified_provider, groq_qualified_model = groq_settings.parse_provider_and_model(
-        "openai/gpt-oss-20b", provider_str="groq"
-    )
-    assert (groq_qualified_provider, groq_qualified_model) == ("groq", "openai/gpt-oss-20b")
+def test_load_from_env_uses_only_canonical_model(monkeypatch):
+    monkeypatch.setattr("src.core.config.load_dotenv", lambda *args, **kwargs: None)
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "provider-specific-key")
+    monkeypatch.setenv("LLM_MODEL_NAME", "legacy-model")
+    loaded = LLMSettings.load_from_env()
+    assert loaded.provider is None
+    assert loaded.model_name is None
+    assert loaded.api_key is None
 
 
 def test_settings_has_one_canonical_llm_object():

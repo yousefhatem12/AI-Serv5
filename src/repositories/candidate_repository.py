@@ -11,10 +11,12 @@ from typing import Dict, Iterable, Optional
 from src.models.candidate import (
     Candidate,
     CandidatePreferences,
+    CandidateProfile,
     CandidateProfileDetails,
     CandidateSkill,
     EvidenceItem,
     SkillLevel,
+    UserProfile,
 )
 
 
@@ -34,32 +36,33 @@ def _seed_candidates() -> Iterable[Candidate]:
     """Provides the local demonstration profile used by the recommendation API."""
     yield Candidate(
         candidate_id="cand_001",
-        profile=CandidateProfileDetails(
-            name="Demo Backend Candidate",
-            target_roles=["Backend Engineer"],
-            preferences=CandidatePreferences(
-                work_mode=["remote"],
-                locations=["Riyadh", "Cairo"],
-                employment_type=["full_time"],
-            ),
+        user=UserProfile(name="Demo Backend Candidate"),
+        candidate_profile=CandidateProfile(
+            location="Riyadh, Saudi Arabia",
         ),
-        skills=[
+        target_roles=["Backend Engineer"],
+        preferences=CandidatePreferences(
+            work_mode=["remote"],
+            locations=["Riyadh", "Cairo"],
+            employment_type=["full_time"],
+        ),
+        candidate_skills=[
             CandidateSkill(
                 skill_id="skill_python",
                 name="Python",
-                level=SkillLevel.ADVANCED,
+                proficiency="advanced",
                 evidence=[EvidenceItem(text="Built backend services with Python.")],
             ),
             CandidateSkill(
                 skill_id="skill_fastapi",
                 name="FastAPI",
-                level=SkillLevel.ADVANCED,
+                proficiency="advanced",
                 evidence=[EvidenceItem(text="Implemented REST APIs with FastAPI.")],
             ),
             CandidateSkill(
                 skill_id="skill_postgresql",
                 name="PostgreSQL",
-                level=SkillLevel.ADVANCED,
+                proficiency="advanced",
                 evidence=[EvidenceItem(text="Designed PostgreSQL data models.")],
             ),
         ],

@@ -182,17 +182,26 @@ class RecommendationService:
         elif isinstance(candidate, dict):
             candidate_id = candidate.get("candidate_id", "cand_001")
 
-        if hasattr(candidate, "profile"):
+        if hasattr(candidate, "target_roles") and candidate.target_roles:
+            target_roles = candidate.target_roles
+        elif hasattr(candidate, "profile"):
             target_roles = getattr(candidate.profile, "target_roles", []) or []
-            preferences = getattr(candidate.profile, "preferences", None)
         elif isinstance(candidate, dict):
             target_roles = candidate.get("target_roles") or candidate.get("profile", {}).get("target_roles", [])
+
+        if hasattr(candidate, "preferences") and candidate.preferences:
+            preferences = candidate.preferences
+        elif hasattr(candidate, "profile"):
+            preferences = getattr(candidate.profile, "preferences", None)
+        elif isinstance(candidate, dict):
             preferences = candidate.get("preferences") or candidate.get("profile", {}).get("preferences")
 
-        if hasattr(candidate, "experience"):
+        if hasattr(candidate, "experiences"):
+            experience_items = candidate.experiences
+        elif hasattr(candidate, "experience"):
             experience_items = candidate.experience
         elif isinstance(candidate, dict):
-            experience_items = candidate.get("experience", [])
+            experience_items = candidate.get("experiences") or candidate.get("experience", [])
 
         # 1. Retrieve Candidate Behavior History
         behavior = self.behavior_repo.get_candidate_behavior(candidate_id)

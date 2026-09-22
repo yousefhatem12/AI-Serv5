@@ -18,15 +18,12 @@ class DocumentLoader:
         ".md": "text",
     }
 
-    def __init__(self):
-        self.extracted_links: list[str] = []
-
-    def load_text(self, file_path: str) -> tuple[str, str]:
+    def load_text(self, file_path: str) -> tuple[str, str, list[str]]:
         """
-        Loads and extracts text from supported digital CV documents.
-        Returns: (extracted_text, document_format)
+        Loads and extracts text and embedded hyperlinks from supported digital CV documents.
+        Returns: (extracted_text, document_format, extracted_links)
+        All extracted links are returned locally per call, avoiding shared mutable state.
         """
-        self.extracted_links = []
         path = Path(file_path)
         if not path.exists():
             raise FileNotFoundError(f"CV file not found: {file_path}")
@@ -41,17 +38,21 @@ class DocumentLoader:
             )
 
         if doc_type == "pdf":
-            return self._extract_pdf(path), "pdf"
+            text, links = self._extract_pdf(path)
+            return text, "pdf", links
         elif doc_type == "docx":
-            return self._extract_docx(path), "docx"
+            text, links = self._extract_docx(path)
+            return text, "docx", links
         elif doc_type == "text":
-            return self._extract_plain_text(path), "text"
+            text, links = self._extract_plain_text(path)
+            return text, "text", links
         else:
             raise ValueError(f"No extractor available for format: {ext}")
 
-    def _extract_pdf(self, path: Path) -> str:
+    def _extract_pdf(self, path: Path) -> tuple[str, list[str]]:
         """Extracts digital text and injects clickable hyperlink URLs inline at their exact positions."""
         text_pages = []
+        extracted_links: list[str] = []
         try:
             import pypdf
             reader = pypdf.PdfReader(str(path))
@@ -75,8 +76,8 @@ class DocumentLoader:
                             if uri and rect:
                                 uri_str = str(uri).strip()
                                 if uri_str:
-                                    if uri_str not in self.extracted_links:
-                                        self.extracted_links.append(uri_str)
+                                    if uri_str not in extracted_links:
+                                        extracted_links.append(uri_str)
                                     x1, y1, x2, y2 = [float(v) for v in rect]
                                     page_links.append({
                                         "uri": uri_str,
@@ -156,11 +157,12 @@ class DocumentLoader:
                 f"No readable text could be extracted from '{path.name}'. "
                 "Please ensure the document contains digital selectable text (scanned image PDFs are not supported)."
             )
-        return full_text
+        return full_text, extracted_links
 
-    def _extract_docx(self, path: Path) -> str:
+    def _extract_docx(self, path: Path) -> tuple[str, list[str]]:
         """Extracts paragraphs, hyperlinks, and table cells from DOCX files."""
         lines: list[str] = []
+        extracted_links: list[str] = []
         try:
             import docx
             from docx.oxml.ns import qn
@@ -177,8 +179,8 @@ class DocumentLoader:
                         target = None
                         if r_id and r_id in p.part.rels:
                             target = p.part.rels[r_id].target_ref
-                            if target and target not in self.extracted_links:
-                                self.extracted_links.append(target)
+                            if target and target not in extracted_links:
+                                extracted_links.append(target)
                         if target and target not in link_text:
                             p_text += f" {link_text} ({target}) "
                         else:
@@ -196,13 +198,12 @@ class DocumentLoader:
                     row_text = " | ".join(cell.text.strip() for cell in row.cells if cell.text.strip())
                     if row_text:
                         lines.append(row_text)
-            return "\n\n".join(lines)
             extracted = "\n\n".join(lines).strip()
             if not extracted:
                 raise ValueError(
                     f"No readable text could be extracted from DOCX file '{path.name}'."
                 )
-            return extracted
+            return extracted, extracted_links
         except ImportError:
             # Fallback direct zip XML extraction if python-docx isn't installed
             import xml.etree.ElementTree as ET
@@ -212,18 +213,17 @@ class DocumentLoader:
             tree = ET.fromstring(xml_content)
             namespaces = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
             text_nodes = tree.findall(".//w:t", namespaces)
-            return " ".join(node.text for node in text_nodes if node.text)
             extracted = " ".join(node.text for node in text_nodes if node.text).strip()
             if not extracted:
                 raise ValueError(
                     f"No readable text could be extracted from DOCX file '{path.name}'."
                 )
-            return extracted
+            return extracted, []
         except Exception as e:
             logger.error(f"DOCX extraction error for {path}: {e}")
             raise ValueError(f"Failed to extract text from DOCX file '{path.name}': {e!s}")
 
-    def _extract_plain_text(self, path: Path) -> str:
+    def _extract_plain_text(self, path: Path) -> tuple[str, list[str]]:
         """Reads plain text files with UTF-8 encoding."""
         with open(path, "r", encoding="utf-8", errors="replace") as f:
-            return f.read()
+            return f.read(), []
