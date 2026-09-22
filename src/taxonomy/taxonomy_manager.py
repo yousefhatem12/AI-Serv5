@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import json
 import logging
 import re
@@ -38,6 +39,13 @@ STOPWORDS_BLACKLIST = {
 
     # Noise and punctuation residues
     "etc", "eg", "ie", "nan", "null", "none", "true", "false", "string", "item", "items"
+}
+
+
+LEGITIMATE_EXPLICIT_SKILLS = {
+    "backend", "frontend", "fullstack", "architecture", "management",
+    "engineering", "programming", "databases", "development",
+    "system", "systems", "platform", "platforms", "solutions", "workflows", "lifecycle"
 }
 
 
@@ -81,9 +89,8 @@ class TaxonomyManager:
             logger.info(f"Loaded {len(self._by_id)} canonical skills from taxonomy seed '{path_obj}'")
         else:
             logger.warning(
-                f"Taxonomy seed file not found at '{file_path}' (resolved: '{path_obj}'). Loading fallback seed."
+                f"Taxonomy seed file not found at '{file_path}' (resolved: '{path_obj}'). Starting with empty taxonomy."
             )
-            self._load_fallback_seed()
 
 
     def register_skill(self, skill: SkillTaxonomyItem) -> None:
@@ -117,22 +124,57 @@ class TaxonomyManager:
         cleaned = re.sub(r"\s+", " ", cleaned)
         return cleaned.strip()
 
-    def is_blacklisted(self, raw_name: str) -> bool:
-        """Checks if a string is a stopword, URL, punctuation noise, or purely numerical."""
+    @staticmethod
+    def clean_skill_label(text: str) -> str:
+        """Remove list punctuation without damaging balanced punctuation in a skill label."""
+        if not isinstance(text, str):
+            return ""
+
+        cleaned = re.sub(r"^[•\u2022\u25e6*\-]+\s*", "", text.strip())
+        cleaned = re.sub(r"[,;:]+$", "", cleaned).rstrip()
+        pairs = {")": "(", "]": "[", "}": "{"}
+
+        while cleaned and cleaned[-1] in pairs:
+            closing = cleaned[-1]
+            if cleaned.count(closing) <= cleaned.count(pairs[closing]):
+                break
+            cleaned = cleaned[:-1].rstrip()
+
+        return cleaned
+
+    def is_blacklisted(self, raw_name: str, is_explicit: bool = False) -> bool:
+        """Checks if a string is a stopword, URL, email, punctuation noise, or purely numerical."""
         if not raw_name:
             return True
 
-        cleaned = self._clean_string(raw_name)
-        if not cleaned or len(cleaned) < 2:
+        raw_trimmed = raw_name.strip()
+        if not raw_trimmed or len(raw_trimmed) < 2:
             return True
 
-        # Reject URLs or file paths
-        if any(indicator in cleaned for indicator in ["http", "://", ".com", ".sa", ".org", ".net", ".io", "www.", "/"]):
+        # Reject standalone emails
+        if "@" in raw_trimmed and re.search(r"[\w\.-]+@[\w\.-]+\.\w+", raw_trimmed):
+            return True
+
+        # Reject URLs or domain links
+        lower_raw = raw_trimmed.lower()
+        if (
+            lower_raw.startswith(("http://", "https://", "www."))
+            or "://" in lower_raw
+            or re.search(r"\b\w+\.(?:com|org|net|io|sa|edu|gov)(?:/|\s|$)", lower_raw)
+        ):
+            return True
+
+        cleaned = self._clean_string(raw_trimmed)
+        if not cleaned or len(cleaned) < 2:
             return True
 
         # Purely numeric or single characters
         if re.match(r"^\d+$", cleaned) or len(cleaned) <= 1:
             return True
+
+        # If explicitly extracted candidate, do not blacklist legitimate technical skills
+        if is_explicit and cleaned in LEGITIMATE_EXPLICIT_SKILLS:
+            return False
 
         # Exact match in blacklist
         if cleaned in STOPWORDS_BLACKLIST:
@@ -223,20 +265,34 @@ class TaxonomyManager:
         category = "Tools"
         return skill_id, canonical_name, category
 
+    def resolve(self, raw_skill: str) -> tuple[str | None, str]:
+        """
+        Non-destructive resolution for open-world skill extraction.
+        Returns (skill_id, canonical_name).
+
+        KNOWN:
+            -> (canonical skill_id, canonical name)
+        UNKNOWN:
+            -> (None, cleaned original name)
+
+        Taxonomy lookup failure never drops the skill.
+        Pure stopwords, URLs, and numeric noise return (None, "").
+        """
+        if not raw_skill or not raw_skill.strip():
+            return None, ""
+
+        if self.is_blacklisted(raw_skill, is_explicit=True):
+            return None, ""
+
+        matched = self.find_skill(raw_skill)
+        if matched:
+            return matched.skill_id, matched.canonical_name
+
+        cleaned = self.clean_skill_label(raw_skill)
+        if not cleaned or len(cleaned) < 2 or self.is_blacklisted(cleaned, is_explicit=True):
+            return None, ""
+
+        return None, cleaned
+
     def get_all_skills(self) -> list[SkillTaxonomyItem]:
         return list(self._by_id.values())
-
-    def _load_fallback_seed(self) -> None:
-        """Default seed if JSON file is not found."""
-        defaults = [
-            {"skill_id": "skill_python", "canonical_name": "Python", "category": "Programming Languages", "aliases": ["Python 3"]},
-            {"skill_id": "skill_sql", "canonical_name": "SQL", "category": "Databases", "aliases": ["PostgreSQL", "MySQL"]},
-            {"skill_id": "skill_machine_learning", "canonical_name": "Machine Learning", "category": "AI & Machine Learning", "aliases": ["ML"]},
-            {"skill_id": "skill_llms", "canonical_name": "Large Language Models", "category": "AI & Machine Learning", "aliases": ["LLMs", "LLM"]},
-            {"skill_id": "skill_react", "canonical_name": "React", "category": "Frameworks", "aliases": ["React.js"]},
-            {"skill_id": "skill_fastapi", "canonical_name": "FastAPI", "category": "Frameworks", "aliases": ["FastAPI Framework"]},
-            {"skill_id": "skill_docker", "canonical_name": "Docker", "category": "DevOps", "aliases": []},
-            {"skill_id": "skill_git", "canonical_name": "Git", "category": "Tools", "aliases": ["GitHub"]},
-        ]
-        for item in defaults:
-            self.register_skill(SkillTaxonomyItem(**item))

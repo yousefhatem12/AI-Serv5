@@ -1,7 +1,10 @@
 from __future__ import annotations
+
 import logging
 import re
 from typing import Any
+
+from ..utils.url_normalizer import extract_web_url_candidates, normalize_web_url
 
 logger = logging.getLogger(__name__)
 
@@ -42,14 +45,14 @@ class ProjectLinkAssociator:
         Extracts and filters all potential project URLs from raw text and document annotations.
         Rejects LinkedIn, social profiles, and pure GitHub user account URLs.
         """
-        found_urls = re.findall(r"https?://[^\s\)\],\"'<>]+", full_text)
+        found_urls = extract_web_url_candidates(full_text)
         if document_urls:
             found_urls.extend(document_urls)
 
         candidates: list[str] = []
         for raw_url in found_urls:
-            clean = raw_url.strip().rstrip(".,)]\"'")
-            if not (clean.startswith("http://") or clean.startswith("https://")):
+            clean = normalize_web_url(raw_url)
+            if not clean:
                 continue
 
             lower_url = clean.lower()
@@ -68,14 +71,28 @@ class ProjectLinkAssociator:
         return candidates
 
     @classmethod
-    def _clean_slug(cls, text: str) -> str:
-        """Lowercases and strips non-alphanumeric characters for slug matching."""
-        return re.sub(r"[^a-z0-9]", "", text.lower())
+    def _assign_url(cls, project: dict[str, Any], url: str) -> None:
+        """Store a project URL in exactly one semantically appropriate URL field."""
+        if "github.com" in url.lower():
+            project["github_url"] = url
+            project["project_url"] = None
+        else:
+            project["project_url"] = url
+            project["github_url"] = None
 
     @classmethod
-    def _extract_tokens(cls, text: str) -> set[str]:
+    def _clean_slug(cls, text: str | None) -> str:
+        """Lowercases and strips non-alphanumeric characters for slug matching."""
+        if not text:
+            return ""
+        return re.sub(r"[^a-z0-9]", "", str(text).lower())
+
+    @classmethod
+    def _extract_tokens(cls, text: str | None) -> set[str]:
         """Extracts distinctive word tokens splitting CamelCase and punctuation."""
-        s = re.sub(r"([a-z])([A-Z])", r"\1 \2", text)
+        if not text:
+            return set()
+        s = re.sub(r"([a-z])([A-Z])", r"\1 \2", str(text))
         words = re.findall(r"[a-z0-9]+", s.lower())
         return {w for w in words if len(w) >= 3 and w not in cls.GENERIC_STOP_WORDS}
 
@@ -85,8 +102,10 @@ class ProjectLinkAssociator:
         Calculates match confidence (0.0 to 1.0) between project metadata and a candidate URL.
         Strong evidence requires >= 0.60.
         """
-        title_slug = cls._clean_slug(project_title)
-        title_tokens = cls._extract_tokens(project_title)
+        safe_title = project_title or ""
+        safe_desc = project_desc or ""
+        title_slug = cls._clean_slug(safe_title)
+        title_tokens = cls._extract_tokens(safe_title)
 
         # Extract repo name or last path component
         if "github.com/" in url:
@@ -122,7 +141,7 @@ class ProjectLinkAssociator:
                     return 0.70 + (overlap * 0.20)
 
         # Check if repo name is mentioned directly in project description
-        if len(repo_slug) >= 5 and repo_slug in cls._clean_slug(project_desc):
+        if len(repo_slug) >= 5 and repo_slug in cls._clean_slug(safe_desc):
             return 0.75
 
         return 0.0
@@ -141,13 +160,12 @@ class ProjectLinkAssociator:
         claimed_urls: set[str] = set()
 
         for proj in projects:
-            title = proj.get("title", "").strip()
-            desc = proj.get("description", "")
-            raw_link = proj.get("link")
+            title = (proj.get("title") or "").strip()
+            desc = proj.get("description") or ""
+            raw_url = proj.get("github_url") or proj.get("project_url") or proj.get("link")
 
-            # Clean any invalid placeholder text like "GitHub Repo"
-            clean_raw = raw_link.strip().rstrip(".,)]\"'") if isinstance(raw_link, str) else None
-            is_valid_url = clean_raw and (clean_raw.startswith("http://") or clean_raw.startswith("https://"))
+            clean_raw = normalize_web_url(raw_url)
+            is_valid_url = clean_raw is not None
 
             # If an existing link is invalid or a non-project domain (e.g. LinkedIn), clear it
             if is_valid_url and any(d in clean_raw.lower() for d in cls.NON_PROJECT_DOMAINS):
@@ -161,8 +179,9 @@ class ProjectLinkAssociator:
 
             # Check if clean_raw is already a valid project repository/live URL present in the document
             if is_valid_url and clean_raw not in claimed_urls and clean_raw in candidate_urls:
-                proj["link"] = clean_raw
+                cls._assign_url(proj, clean_raw)
                 claimed_urls.add(clean_raw)
+                proj.pop("link", None)
                 continue
 
             # Otherwise, search among available candidate URLs for strong evidence
@@ -181,9 +200,12 @@ class ProjectLinkAssociator:
 
             # Rule 5: If cannot be confidently associated (>= 0.60), return null
             if best_url and best_score >= 0.60:
-                proj["link"] = best_url
+                cls._assign_url(proj, best_url)
                 claimed_urls.add(best_url)
             else:
-                proj["link"] = None
+                proj["github_url"] = None
+                proj["project_url"] = None
+
+            proj.pop("link", None)
 
         return projects

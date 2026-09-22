@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import re
 
 from ..models.candidate import EvidenceItem
@@ -6,11 +7,36 @@ from ..models.taxonomy import SkillTaxonomyItem
 
 
 class EvidenceLinker:
-    """
-    Finds exact textual evidence and quotes from the CV for each detected skill.
-    Ensures explainability by answering: 'Why does the system say the user has this skill?'
-    Handles special symbols like C++, C#, .NET gracefully.
-    """
+    """Find exact, boundary-aware textual evidence for extracted skills."""
+
+    @classmethod
+    def _extract_bounded_snippet(cls, clean_text: str, match: re.Match, limit: int = 120) -> str:
+        """Return a bounded snippet that always includes the exact matched term."""
+        if len(clean_text) <= limit:
+            return clean_text
+
+        try:
+            start_pos = match.start(1)
+            end_pos = match.end(1)
+        except (IndexError, AttributeError):
+            start_pos = match.start()
+            end_pos = match.end()
+
+        text_len = len(clean_text)
+        match_center = (start_pos + end_pos) // 2
+        win_start = max(0, match_center - (limit // 2))
+        win_end = min(text_len, win_start + limit)
+        if win_end == text_len:
+            win_start = max(0, text_len - limit)
+        if win_start > start_pos:
+            win_start = start_pos
+        if win_end < end_pos:
+            win_end = end_pos
+
+        snippet_window = clean_text[win_start:win_end]
+        prefix = "..." if win_start > 0 else ""
+        suffix = "..." if win_end < text_len else ""
+        return f"{prefix}{snippet_window}{suffix}"
 
     @classmethod
     def link_evidence(
@@ -18,77 +44,62 @@ class EvidenceLinker:
         skill_name: str,
         taxonomy_item: SkillTaxonomyItem | None,
         sections: dict[str, str],
-        full_text: str
+        full_text: str,
     ) -> list[EvidenceItem]:
         evidence_list: list[EvidenceItem] = []
 
-        # Build search keywords (canonical name, raw name, aliases)
         keywords = {skill_name.lower()}
         if taxonomy_item:
             keywords.add(taxonomy_item.canonical_name.lower())
-            for alias in taxonomy_item.aliases:
-                keywords.add(alias.lower())
+            keywords.update(alias.lower() for alias in taxonomy_item.aliases)
 
-        # Clean search terms (sorted by length descending to match compound terms first)
-        sorted_terms = sorted([k for k in keywords if len(k) >= 2], key=len, reverse=True)
+        sorted_terms = sorted((term for term in keywords if len(term) >= 2), key=len, reverse=True)
         if not sorted_terms:
             return evidence_list
 
-        # Robust regex pattern handling C++, C#, .NET, Python, etc.
-        escaped_terms = [re.escape(k) for k in sorted_terms]
-        terms_regex = "|".join(escaped_terms)
-        pattern = re.compile(rf"(?:^|[\s\(\[\{{,\/•\|\-\:])({terms_regex})(?:$|[\s\)\]\}},;•\|\-\:])", re.IGNORECASE)
+        terms_regex = "|".join(re.escape(term) for term in sorted_terms)
+        pattern = re.compile(rf"(?<!\w)({terms_regex})(?!\w)", re.IGNORECASE)
 
-        # 1. Search in structured sections (prioritize Projects & Experience first)
-        priority_sections = ["projects", "experience", "skills", "certifications", "education", "summary", "other"]
-        # Also search any dynamic sections created for unrecognized headers (e.g. "publications", "military_service")
-        known_sections: set = set(priority_sections) | {"header"}
-        for extra_sec in sections:
-            if extra_sec not in known_sections:
-                priority_sections.append(extra_sec)
-
-        for sec in priority_sections:
-            if sec not in sections:
-                continue
-
-            sec_text = sections[sec]
-            # Split section text into sentences or bullet points
-            snippets = [s.strip() for s in re.split(r"[\n\.\;•\-\|]+", sec_text) if s.strip()]
-
+        # The normalized section key is also the evidence category. This works for both
+        # standard and dynamically discovered sections without a second section taxonomy.
+        for section, section_text in sections.items():
+            snippets = [
+                value.strip()
+                for value in re.split(r"[\n\r;•\u2022\u25e6|]+", section_text)
+                if value.strip()
+            ]
             for snippet in snippets:
-                if pattern.search(snippet):
-                    # Found matching evidence sentence
-                    clean_snippet = re.sub(r"\s+", " ", snippet).strip()
-                    if len(clean_snippet) > 120:
-                        clean_snippet = clean_snippet[:120] + "..."
+                clean_snippet = re.sub(r"\s+", " ", snippet).strip()
+                match = pattern.search(clean_snippet)
+                if not match:
+                    continue
 
-                    evidence_type = "project" if sec == "projects" else ("experience" if sec == "experience" else "skills_section")
-
-                    # Avoid duplicate snippets
-                    if not any(e.text == clean_snippet for e in evidence_list):
-                        evidence_list.append(
-                            EvidenceItem(
-                                type=evidence_type,
-                                text=clean_snippet,
-                                source="cv",
-                                section=sec
-                            )
-                        )
-
-        # 2. Fallback: Search full text if no section match was found
-        if not evidence_list:
-            lines = [line_item.strip() for line_item in full_text.split("\n") if line_item.strip()]
-            for line in lines:
-                if pattern.search(line):
-                    clean_line = re.sub(r"\s+", " ", line).strip()
+                bounded_snippet = cls._extract_bounded_snippet(clean_snippet, match, limit=120)
+                if not any(item.text == bounded_snippet for item in evidence_list):
                     evidence_list.append(
                         EvidenceItem(
-                            type="skills_section",
-                            text=clean_line[:120],
+                            type=section,
+                            text=bounded_snippet,
                             source="cv",
-                            section="general"
+                            section=section,
                         )
                     )
-                    break
+
+        if evidence_list:
+            return evidence_list
+
+        for line in (value.strip() for value in full_text.split("\n") if value.strip()):
+            clean_line = re.sub(r"\s+", " ", line).strip()
+            match = pattern.search(clean_line)
+            if match:
+                evidence_list.append(
+                    EvidenceItem(
+                        type="general",
+                        text=cls._extract_bounded_snippet(clean_line, match, limit=120),
+                        source="cv",
+                        section="general",
+                    )
+                )
+                break
 
         return evidence_list
