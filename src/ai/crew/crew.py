@@ -13,14 +13,15 @@ from src.ai.suggested_prompts.agent_context import AgentType
 
 def _classify_intent(user_message: str) -> AgentType:
     """
-    A lightweight initial classification (rule-based or a fast model) to
-    determine who should respond. Start with simple rule-based logic, and
-    it can later be switched to a small classification model if needed.
+    Classify the incoming user message to route to the most specialized agent:
+    - ROADMAP: Weekly Action Planning, Roadmap Adjustments, Milestones & Stage Progression
+    - JOB_INSIGHTS: Job-Specific Advice, Interview Readiness, Application Debriefs, Fit & Skill Gaps
+    - MENTOR: Goal Clarification, Career Direction, Truthfulness & General Mentoring
     """
     lowered = user_message.lower()
-    if any(k in lowered for k in ["roadmap", "plan", "milestone", "stage"]):
+    if any(k in lowered for k in ["roadmap", "plan", "milestone", "stage", "weekly", "action plan", "reprioritize", "adjust roadmap"]):
         return AgentType.ROADMAP
-    if any(k in lowered for k in ["this job", "apply", "match", "fit"]):
+    if any(k in lowered for k in ["this job", "apply", "match", "fit", "interview", "ready", "debrief", "rejection", "rejected", "requirements"]):
         return AgentType.JOB_INSIGHTS
     return AgentType.MENTOR
 

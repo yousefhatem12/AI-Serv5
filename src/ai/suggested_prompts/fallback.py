@@ -10,19 +10,19 @@ logger = logging.getLogger("suggested_prompts")
 
 DEFAULT_FALLBACK_PROMPTS: dict[AgentType, List[str]] = {
     AgentType.MENTOR: [
-        "What's the most important practical step I should take this week?",
-        "Can you explain in more detail how to develop this skill?",
-        "What are the most likely interview questions in this field?",
+        "How should I structure my target role and timeline into concrete milestones?",
+        "What lessons should I capture from my latest application or interview?",
+        "What evidence or portfolio project should I add to prove this skill?",
     ],
     AgentType.ROADMAP: [
-        "What's the most important milestone I should start with?",
-        "Can you suggest learning resources for a specific skill?",
-        "Can I adjust the roadmap's priorities?",
+        "What should my weekly action plan look like for this milestone?",
+        "How should I reprioritize my roadmap after completing this project?",
+        "Which skill gap should I tackle first this week?",
     ],
     AgentType.JOB_INSIGHTS: [
-        "What's my biggest skill gap relative to this job?",
-        "Should I apply now or wait?",
-        "Are there other similar jobs that would suit me?",
+        "How do my verified skills compare against this job's requirements?",
+        "Which topics should I prioritize practicing for interview readiness?",
+        "Should I apply now or focus on closing these specific skill gaps first?",
     ],
 }
 

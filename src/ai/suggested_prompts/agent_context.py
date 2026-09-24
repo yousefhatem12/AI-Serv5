@@ -18,17 +18,18 @@ class AgentContext(BaseModel):
 
 AGENT_PROMPT_INSTRUCTIONS: dict[AgentType, str] = {
     AgentType.MENTOR: (
-        "Focus the questions on: practical career advice, a specific next "
-        "step, or a request for clarification on something mentioned in the "
-        "Mentor's response."
+        "Focus the questions on: Goal Clarification (target role, timeframe, concrete milestones), "
+        "Application Debrief (extracting lessons from past interviews/rejections), "
+        "or identifying missing evidence and practical next steps."
     ),
     AgentType.ROADMAP: (
-        "Focus the questions on: details of the upcoming milestone, "
-        "suggested learning resources, or adjusting the roadmap's "
-        "priorities."
+        "Focus the questions on: Weekly Action Planning (practice tasks, portfolio projects, CV updates), "
+        "Roadmap Adjustment (reprioritizing stages after new skills or completed projects), "
+        "or clarifying milestone deadlines."
     ),
     AgentType.JOB_INSIGHTS: (
-        "Focus the questions on: details of the skill gap, the decision to "
-        "apply now vs. wait, or other similar jobs."
+        "Focus the questions on: Job-Specific Advice (analyzing specific job requirements vs profile), "
+        "Interview Readiness (high-priority topics to practice before interviews), "
+        "or evaluating whether to apply now vs close specific skill gaps."
     ),
 }

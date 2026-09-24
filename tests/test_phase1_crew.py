@@ -49,24 +49,41 @@ def test_agents_configuration():
 
     assert len(mentor_agent.tools) == 6
     assert len(roadmap_agent.tools) == 2
-    assert len(job_insights_agent.tools) == 2
+    assert len(job_insights_agent.tools) == 3
 
 
 def test_intent_classification():
-    assert _classify_intent("Help me build a roadmap for my career") == AgentType.ROADMAP
-    assert _classify_intent("Should I apply for this job?") == AgentType.JOB_INSIGHTS
+    # Goal Clarification & General Mentoring -> MENTOR
+    assert _classify_intent("I want a backend internship, what should my goal and timeline look like?") == AgentType.MENTOR
     assert _classify_intent("How can I improve my resume?") == AgentType.MENTOR
+
+    # Weekly Action Planning & Roadmap Adjustment -> ROADMAP
+    assert _classify_intent("Help me build a roadmap for my career") == AgentType.ROADMAP
+    assert _classify_intent("Can you make a weekly action plan for this milestone?") == AgentType.ROADMAP
+    assert _classify_intent("I finished a project, how should I adjust roadmap priorities?") == AgentType.ROADMAP
+
+    # Job-Specific Advice, Interview Readiness & Application Debrief -> JOB_INSIGHTS
+    assert _classify_intent("Should I apply for this job?") == AgentType.JOB_INSIGHTS
+    assert _classify_intent("How do my skills match this job requirements?") == AgentType.JOB_INSIGHTS
+    assert _classify_intent("Which topics should I practice for interview readiness?") == AgentType.JOB_INSIGHTS
+    assert _classify_intent("I was rejected after the technical interview, let's debrief") == AgentType.JOB_INSIGHTS
 
 
 def test_task_builders():
-    task_m = build_mentor_task("Hello", {"context": "test"})
+    task_m = build_mentor_task("I want a backend internship", {"candidate_profile": {}})
     assert task_m.agent == mentor_agent
+    assert "Goal Clarification" in task_m.description
+    assert "Truthfulness & Boundaries" in task_m.description
 
-    task_r = build_roadmap_task("Plan", {"context": "test"})
+    task_r = build_roadmap_task("Give me a weekly plan", {"candidate_profile": {}})
     assert task_r.agent == roadmap_agent
+    assert "Weekly Action Planning" in task_r.description
+    assert "Roadmap Adjustment" in task_r.description
 
-    task_j = build_job_insights_task("Fit", {"context": "test"})
+    task_j = build_job_insights_task("Match report for this job", {"candidate_profile": {}})
     assert task_j.agent == job_insights_agent
+    assert "Job-Specific Advice" in task_j.description
+    assert "Interview Readiness" in task_j.description
 
 
 @pytest.mark.asyncio
@@ -87,6 +104,27 @@ async def test_memory_persistence():
     assert messages[3]["role"] == "assistant"
     assert messages[3]["content"] == "Follow your roadmap"
 
-    ctx = await build_mentor_context("cand_001", conv_id)
-    assert "recent_messages" in ctx
+    ctx = await build_mentor_context(
+        user_id="cand_001",
+        conversation_id=conv_id,
+        job_id="job_001",
+        target_role="Backend Engineer",
+        career_preferences={"remote": True},
+        saved_jobs=["job_002"],
+        applied_jobs=[{"job_id": "job_003", "status": "applied"}],
+        application_statuses=[{"job_id": "job_004", "status": "rejected", "stage": "technical_interview"}],
+        user_notes=["Focus on async Python and PostgreSQL"],
+        current_milestones=["Master FastAPI"],
+    )
+    # Check all allowed context elements
+    assert "candidate_profile" in ctx
     assert "cv_summary" in ctx
+    assert ctx["target_role"] == "Backend Engineer"
+    assert ctx["career_preferences"] == {"remote": True}
+    assert ctx["selected_job_id"] == "job_001"
+    assert "job_002" in ctx["saved_jobs"]
+    assert len(ctx["applied_jobs"]) == 1
+    assert len(ctx["application_statuses"]) == 1
+    assert "Focus on async Python and PostgreSQL" in ctx["user_notes"]
+    assert "Master FastAPI" in ctx["completed_milestones"]
+    assert "recent_messages" in ctx

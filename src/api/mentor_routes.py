@@ -23,7 +23,19 @@ async def mentor_chat_stream(
     payload: MentorChatRequest,
     current_user=Depends(get_current_user),
 ):
-    context = await build_mentor_context(payload.user_id, payload.conversation_id)
+    context = await build_mentor_context(
+        user_id=payload.user_id,
+        conversation_id=payload.conversation_id,
+        job_id=payload.job_id,
+        target_role=payload.target_role,
+        career_preferences=payload.career_preferences,
+        saved_jobs=payload.saved_jobs,
+        applied_jobs=payload.applied_jobs,
+        application_statuses=payload.application_statuses,
+        match_reports=payload.match_reports,
+        user_notes=payload.user_notes,
+        current_milestones=payload.current_milestones,
+    )
 
     async def generator():
         full_answer = ""
