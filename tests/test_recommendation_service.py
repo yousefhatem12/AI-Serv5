@@ -12,7 +12,7 @@ from src.models.candidate import (
     EvidenceItem,
 )
 from src.services.recommendation_service import RecommendationService
-from src.repositories.mock_job_repository import MockJobRepository
+from src.db.repositories.mock_job_repository import MockJobRepository
 
 
 @pytest.fixture

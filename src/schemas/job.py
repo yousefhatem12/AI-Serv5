@@ -1,7 +1,10 @@
 from __future__ import annotations
 from datetime import datetime
-from typing import Optional, List, Union
+from typing import List, Optional, Union
 from pydantic import BaseModel, Field
+
+from src.job_extractor.models import JobRequirementProfile
+
 
 class SkillRequirement(BaseModel):
     skill_name: str = Field(description="Name of the required skill or tool")
@@ -18,7 +21,6 @@ class SkillRequirement(BaseModel):
         if isinstance(item, str):
             return cls(skill_name=item)
         if isinstance(item, dict):
-            # Support both 'name' and 'skill_name'
             name = item.get("skill_name") or item.get("name") or "Unknown"
             return cls(
                 skill_name=name,
@@ -29,6 +31,7 @@ class SkillRequirement(BaseModel):
                 description=item.get("description"),
             )
         return cls(skill_name=str(item))
+
 
 class JobPosting(BaseModel):
     job_id: str = Field(description="Unique identifier for the job position")
@@ -56,6 +59,7 @@ class JobPosting(BaseModel):
     description_is_partial: bool = Field(default=False, description="Whether description is only a source snippet")
     required_skills: List[SkillRequirement] = Field(default=[], description="List of required technical and domain skills")
 
+
 class JobRequirementsPayload(BaseModel):
     job_id: Optional[str] = Field(default=None, description="Optional job ID")
     role_title: Optional[str] = Field(default=None, description="Title of the target role")
@@ -64,6 +68,7 @@ class JobRequirementsPayload(BaseModel):
 
 
 from src.job_extractor.models import JobRequirementProfile
+
 
 
 class JobAnalysisRequest(BaseModel):

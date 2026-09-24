@@ -12,17 +12,35 @@ class InterviewSessionModel(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     job_id = Column(String(100), nullable=False, index=True)
     candidate_id = Column(String(100), nullable=False, index=True)
-    target_role = Column(String(150), nullable=False)
+    target_role = Column(String(150), nullable=True)
+    track = Column(String(150), nullable=True)
+    skill_gaps_json = Column(Text, nullable=True)
     questions_json = Column(Text, nullable=False)
+    answers_json = Column(Text, nullable=True)
+    evaluation_json = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    @property
+    def user_id(self) -> str:
+        return self.candidate_id
+
+    @user_id.setter
+    def user_id(self, val: str) -> None:
+        self.candidate_id = val
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "session_id": self.id,
             "id": self.id,
             "job_id": self.job_id,
             "candidate_id": self.candidate_id,
-            "target_role": self.target_role,
+            "user_id": self.candidate_id,
+            "target_role": self.target_role or self.track,
+            "track": self.track or self.target_role,
+            "skill_gaps": json.loads(self.skill_gaps_json) if self.skill_gaps_json else [],
             "questions": json.loads(self.questions_json) if self.questions_json else [],
+            "answers": json.loads(self.answers_json) if self.answers_json else None,
+            "evaluation": json.loads(self.evaluation_json) if self.evaluation_json else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 

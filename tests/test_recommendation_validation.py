@@ -19,9 +19,9 @@ from src.models.candidate import (
     CandidateSkill,
     SkillLevel,
 )
-from src.repositories.behavior_repository import MockBehaviorRepository
-from src.repositories.candidate_repository import candidate_repository
-from src.repositories.mock_job_repository import MockJobRepository
+from src.db.repositories.behavior_repository import MockBehaviorRepository
+from src.db.repositories.candidate_repository import candidate_repository
+from src.db.repositories.mock_job_repository import MockJobRepository
 from src.schemas.job import JobPosting, SkillRequirement
 from src.schemas.recommendation import CandidateBehaviorHistory
 from src.services.matching_service import MatchingService
@@ -280,7 +280,7 @@ def test_api_feed_is_personalized_and_rejects_unknown_candidates():
     )
     candidate_repository.save_candidate(custom_candidate)
 
-    from src.repositories.mock_job_repository import MockJobRepository
+    from src.db.repositories.mock_job_repository import MockJobRepository
     from src.services.recommendation_service import recommendation_service
 
     original_repository = recommendation_service.job_repo

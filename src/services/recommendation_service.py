@@ -13,9 +13,8 @@ Coordinates:
 from datetime import datetime, timezone
 from typing import List, Optional, Any, Tuple
 
-from src.repositories.behavior_repository import BehaviorRepository, MockBehaviorRepository
-from src.repositories.job_repository import JobRepository
-from src.db.repositories.job_repository import DatabaseJobRepository
+from src.db.repositories.behavior_repository import BehaviorRepository, MockBehaviorRepository
+from src.db.repositories.job_repository import DatabaseJobRepository, JobRepository
 from src.schemas.job import JobPosting
 from src.schemas.recommendation import (
     CandidateBehaviorHistory,

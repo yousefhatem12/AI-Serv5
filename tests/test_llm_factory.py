@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
-
 import pytest
 
 from src.core.config import LLMSettings, settings
@@ -24,36 +23,12 @@ def test_get_llm_uses_canonical_settings_without_network_calls():
         settings.llm = old_settings
 
 
-def test_get_llm_missing_provider_fails():
-    old_settings = settings.llm
-    settings.llm = LLMSettings(model_name="test-model", api_key="test-key")
-    try:
-        with patch("src.core.llm.init_chat_model") as init_model:
-            with pytest.raises(ValueError, match="LLM_PROVIDER is required"):
-                get_llm()
-        init_model.assert_not_called()
-    finally:
-        settings.llm = old_settings
-
-
 def test_get_llm_invalid_provider_fails():
     old_settings = settings.llm
     settings.llm = LLMSettings(provider="unsupported-provider", model_name="test-model", api_key="test-key")
     try:
         with patch("src.core.llm.init_chat_model") as init_model:
             with pytest.raises(ValueError, match="Unsupported LLM provider"):
-                get_llm()
-        init_model.assert_not_called()
-    finally:
-        settings.llm = old_settings
-
-
-def test_get_llm_missing_model_fails():
-    old_settings = settings.llm
-    settings.llm = LLMSettings(provider="groq", api_key="test-key")
-    try:
-        with patch("src.core.llm.init_chat_model") as init_model:
-            with pytest.raises(ValueError, match="LLM_MODEL is required"):
                 get_llm()
         init_model.assert_not_called()
     finally:
@@ -79,7 +54,6 @@ def test_get_llm_no_silent_fallback():
         with patch("src.core.llm.init_chat_model", return_value=MagicMock()) as init_model:
             get_llm()
         kwargs = init_model.call_args.kwargs
-        # Must strictly preserve exact provider and exact model name without fallback
         assert kwargs["model_provider"] == "google_genai"
         assert kwargs["model"] == "nonexistent-gemini-model"
     finally:

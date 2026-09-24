@@ -8,7 +8,7 @@ from src.cv_extractor.pipeline import CVExtractionPipeline
 from src.taxonomy.taxonomy_manager import TaxonomyManager
 from src.cv_extractor.document_loader import DocumentLoader
 from src.cv_extractor.llm_extractor import LLMExtractor
-from src.core.config import get_app_settings
+from src.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +22,7 @@ class CVService:
         if pipeline:
             self.pipeline = pipeline
         else:
-            app_settings = get_app_settings()
-            taxonomy = TaxonomyManager(seed_file_path=app_settings.taxonomy_path)
+            taxonomy = TaxonomyManager(seed_file_path=settings.TAXONOMY_PATH)
             loader = DocumentLoader()
             extractor = LLMExtractor()
             self.pipeline = CVExtractionPipeline(

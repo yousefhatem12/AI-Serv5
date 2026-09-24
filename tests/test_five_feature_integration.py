@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from src.cv_extractor.pipeline import CVExtractionPipeline
 from src.job_extractor.pipeline import JobExtractionPipeline
 from src.models.candidate import CandidatePreferences
-from src.repositories.behavior_repository import MockBehaviorRepository
+from src.db.repositories.behavior_repository import MockBehaviorRepository
 from src.schemas.job import JobPosting, SkillRequirement
 from src.services.matching_service import MatchingService
 from src.services.recommendation_explanation import build_recommendation_explanation

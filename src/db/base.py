@@ -41,12 +41,37 @@ def init_db() -> None:
         import src.db.models.job_requirement  # noqa: F401 — registers AI-contract columns
         import src.db.models.roadmap
         import src.db.models.skill_resource
+        import src.models.mentor_conversation  # noqa: F401
+        import src.models.mentor_message  # noqa: F401
 
         Base.metadata.create_all(bind=engine)
         _ensure_job_columns()
+        _ensure_interview_columns()
         logger.info("Database tables verified and initialized successfully.")
     except Exception as e:
         logger.error(f"Error initializing database tables: {e}", exc_info=True)
+
+
+def _ensure_interview_columns() -> None:
+    """Add practice interview columns to legacy interview_sessions table if missing."""
+    inspector = inspect(engine)
+    if "interview_sessions" not in inspector.get_table_names():
+        return
+
+    existing = {column["name"] for column in inspector.get_columns("interview_sessions")}
+    columns = {
+        "track": "VARCHAR(150)",
+        "skill_gaps_json": "TEXT",
+        "answers_json": "TEXT",
+        "evaluation_json": "TEXT",
+    }
+
+    missing = [(name, sql_type) for name, sql_type in columns.items() if name not in existing]
+    if not missing:
+        return
+    with engine.begin() as connection:
+        for name, sql_type in missing:
+            connection.execute(text(f'ALTER TABLE interview_sessions ADD COLUMN "{name}" {sql_type}'))
 
 
 def _ensure_job_columns() -> None:
@@ -86,3 +111,4 @@ def _ensure_job_columns() -> None:
     with engine.begin() as connection:
         for name, sql_type in missing:
             connection.execute(text(f'ALTER TABLE jobs ADD COLUMN "{name}" {sql_type}'))
+

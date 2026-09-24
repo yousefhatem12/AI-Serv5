@@ -8,7 +8,7 @@ import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from src.repositories.candidate_repository import candidate_repository
+from src.db.repositories.candidate_repository import candidate_repository
 from src.schemas.recommendation import RecommendationFeedResponse
 from src.services.recommendation_service import RecommendationService, recommendation_service
 

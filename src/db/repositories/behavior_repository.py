@@ -1,7 +1,4 @@
-"""Abstract interface and mock implementation for candidate interaction behavior.
-
-Decouples recommendation scoring from candidate interaction persistence.
-"""
+"""Abstract interface and mock implementation for candidate interaction behavior."""
 
 from abc import ABC, abstractmethod
 from typing import Dict, Optional
@@ -32,19 +29,18 @@ class MockBehaviorRepository(BehaviorRepository):
 
     def __init__(self, initial_data: Optional[Dict[str, CandidateBehaviorHistory]] = None):
         self._store: Dict[str, CandidateBehaviorHistory] = initial_data or {
-            # Default mock behavior for testing
             "cand_001": CandidateBehaviorHistory(
                 saved_job_ids=["job_030"],
                 applied_job_ids=["job_028"],
                 dismissed_job_ids=["job_029"],
-                viewed_job_ids=["job_001", "job_002"]
+                viewed_job_ids=["job_001", "job_002"],
             ),
             "cand_python_senior": CandidateBehaviorHistory(
                 saved_job_ids=["job_001", "job_030"],
                 applied_job_ids=["job_028"],
                 dismissed_job_ids=["job_029"],
-                viewed_job_ids=[]
-            )
+                viewed_job_ids=[],
+            ),
         }
 
     def get_candidate_behavior(self, candidate_id: str) -> CandidateBehaviorHistory:

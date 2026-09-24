@@ -61,7 +61,7 @@ async def explain_job_match(
     payload: SkillGapAnalysisRequest,
     db: Session = Depends(get_db)
 ) -> SkillGapAnalysisResponse:
-    result = await matching_service.analyze_skill_gap(payload)
+    result = await matching_service.explain_job_match(payload)
     # Persist match result to database for auditability and caching
     try:
         repo = MatchRepository(db)

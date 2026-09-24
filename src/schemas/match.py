@@ -45,6 +45,18 @@ class CandidateProfilePayload(BaseModel):
         default=None,
         description="Raw extracted resume text, if available"
     )
+    target_roles: List[str] = Field(
+        default=[],
+        description="Desired or target job titles / roles"
+    )
+    preferences: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Candidate work preferences (work_mode, location, employment_type)"
+    )
+    total_years_experience: Optional[float] = Field(
+        default=None,
+        description="Total verified years of professional experience"
+    )
 
 class SkillGapAnalysisRequest(BaseModel):
     job_id: str = Field(description="Unique job identifier")
@@ -57,6 +69,34 @@ class SkillGapAnalysisRequest(BaseModel):
     ] = Field(description="List of required skills or structured job posting")
     candidate_profile: Union[CandidateProfilePayload, Dict[str, Any], str] = Field(
         description="Candidate's listed skills, project experience, and work history"
+    )
+    preferred_skills: List[Union[str, Dict[str, Any], SkillRequirement]] = Field(
+        default=[],
+        description="Optional preferred / nice-to-have skills for the role"
+    )
+    job_title: Optional[str] = Field(
+        default=None,
+        description="Job title or role designation for role alignment"
+    )
+    canonical_role: Optional[str] = Field(
+        default=None,
+        description="Taxonomy-normalized canonical role"
+    )
+    min_years_experience: Optional[float] = Field(
+        default=None,
+        description="Minimum years of professional experience required"
+    )
+    work_mode: Optional[str] = Field(
+        default=None,
+        description="Job work mode: remote, hybrid, or onsite"
+    )
+    location: Optional[str] = Field(
+        default=None,
+        description="Job location / city"
+    )
+    employment_type: Optional[str] = Field(
+        default=None,
+        description="Job employment type: full_time, contract, etc."
     )
 
 from src.schemas.roadmap import ResourceLinkSchema
@@ -107,6 +147,50 @@ class SkillGapAnalysisResponse(BaseModel):
     recommended_upskilling_path: List[str] = Field(
         default=[],
         description="Strategic, step-by-step upskilling recommendations"
+    )
+    preferred_skills_breakdown: List[SkillMatchItem] = Field(
+        default=[],
+        description="Evaluation of preferred or nice-to-have skills"
+    )
+    weak_skills: List[str] = Field(
+        default=[],
+        description="Required skills where candidate demonstrated partial proficiency (1 to 69)"
+    )
+    blockers: List[str] = Field(
+        default=[],
+        description="Non-negotiable blockers preventing immediate qualification"
+    )
+    nice_to_have_gaps: List[str] = Field(
+        default=[],
+        description="Preferred skills not found in candidate profile"
+    )
+    role_alignment_score: Optional[float] = Field(
+        default=None,
+        description="Score (0-100) assessing target role and experience title alignment"
+    )
+    experience_score: Optional[float] = Field(
+        default=None,
+        description="Score (0-100) assessing depth and duration of relevant professional experience"
+    )
+    preference_fit_score: Optional[float] = Field(
+        default=None,
+        description="Score (0-100) assessing work mode and location match"
+    )
+    skills_match_score: Optional[float] = Field(
+        default=None,
+        description="Score (0-100) assessing core required technical skills match"
+    )
+    score_breakdown: Optional[Dict[str, float]] = Field(
+        default=None,
+        description="Multi-dimensional score breakdown across skills, role, experience, and preferences"
+    )
+    rationale: Optional[str] = Field(
+        default=None,
+        description="Concise executive reasoning explaining the match evaluation and hiring priority"
+    )
+    priority: Optional[str] = Field(
+        default="medium",
+        description="Hiring priority level: 'high', 'medium', or 'low'"
     )
 
 # Convenient aliases

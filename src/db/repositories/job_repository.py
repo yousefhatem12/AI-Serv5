@@ -1,9 +1,11 @@
-"""Persistence adapter for canonical source-ingested jobs."""
+"""Persistence adapter for canonical source-ingested jobs and abstract job repository interface."""
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import List, Optional
 
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
@@ -11,8 +13,40 @@ from sqlalchemy.orm import Session
 from src.db.base import SessionLocal
 from src.db.models.job_requirement import JobRequirementModel
 from src.job_extractor.models import JobRequirementProfile
-from src.repositories.job_repository import JobRepository
 from src.schemas.job import JobPosting, SkillRequirement
+
+
+class JobRepository(ABC):
+    """Abstract base class for job data access."""
+
+    @abstractmethod
+    def get_active_jobs(
+        self,
+        work_mode: Optional[str] = None,
+        location: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: int = 0,
+    ) -> List[JobPosting]:
+        """
+        Retrieves all currently active, non-expired job postings from the catalog.
+
+        Args:
+            work_mode: Optional filter by work mode (e.g. 'remote', 'hybrid', 'onsite')
+            location: Optional filter substring by location
+            limit: Maximum number of jobs to return (None for all)
+            offset: Number of items to skip
+        """
+        pass
+
+    @abstractmethod
+    def get_job_by_id(self, job_id: str) -> Optional[JobPosting]:
+        """
+        Retrieves a single job posting by its unique identifier.
+
+        Args:
+            job_id: Unique job identifier
+        """
+        pass
 
 
 @dataclass(frozen=True)
@@ -205,3 +239,6 @@ class DatabaseJobRepository(JobRepository):
             self.db.rollback()
             raise
         return UpsertOutcome(created=created, job_id=record.id)
+
+    def upsert_job(self, job: JobPosting, *, profile: JobRequirementProfile | None = None) -> UpsertOutcome:
+        return self.upsert(job, profile=profile)

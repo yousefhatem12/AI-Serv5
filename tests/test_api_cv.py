@@ -6,6 +6,10 @@ from src.api.dependencies import get_cv_pipeline
 from src.api.main import app
 from src.cv_extractor.llm_extractor import LLMExtractor
 from src.cv_extractor.pipeline import CVExtractionPipeline
+from src.schemas.cv import ExtractionErrorResponse
+from src.core.config import settings
+
+client = TestClient(app)
 
 
 class MockLLM:
@@ -91,3 +95,61 @@ def test_file_endpoint_uses_the_same_llm_only_pipeline_and_preserves_candidate_i
         assert response.headers["X-CV-Extraction-Mode"] == "llm"
     finally:
         app.dependency_overrides.pop(get_cv_pipeline, None)
+
+
+def test_rate_limiting_enforcement(monkeypatch):
+    """P2 Test: Exceeding request quota triggers 429 Too Many Requests with ExtractionErrorResponse."""
+    from src.core.security import rate_limiter
+    from src.core.config import get_app_settings
+
+    rate_limiter.reset()
+
+    # Configure low rate limit for testing
+    settings = get_app_settings()
+    monkeypatch.setattr(settings, "rate_limit_per_minute", 3)
+    monkeypatch.setattr(settings, "enable_rate_limiting", True)
+
+    # Make 3 allowed requests
+    for _ in range(3):
+        resp = client.get("/api/v1/cv/jobs/test_job_rate")
+        assert resp.status_code == 404  # Reaches endpoint
+
+    # 4th request must hit rate limit (429)
+    resp_blocked = client.get("/api/v1/cv/jobs/test_job_rate")
+    assert resp_blocked.status_code == 429
+    data = resp_blocked.json()
+    error_schema = ExtractionErrorResponse.model_validate(data)
+    assert "rate limit exceeded" in error_schema.detail.lower()
+    assert error_schema.error_code == "RATE_LIMIT_EXCEEDED"
+    assert "retry-after" in resp_blocked.headers
+
+    rate_limiter.reset()
+
+
+def test_api_key_authentication(monkeypatch):
+    """P2 Test: When API key authentication is enabled, missing/invalid keys return 401."""
+    from src.core.config import get_app_settings
+
+    settings = get_app_settings()
+    monkeypatch.setattr(settings, "enable_api_key_auth", True)
+    monkeypatch.setattr(settings, "api_key", "secret-test-key-12345")
+
+    # 1. Request without key -> 401
+    resp_no_key = client.get("/api/v1/cv/jobs/test_job")
+    assert resp_no_key.status_code == 401
+    data = resp_no_key.json()
+    error_schema = ExtractionErrorResponse.model_validate(data)
+    assert error_schema.error_code == "UNAUTHORIZED"
+
+    # 2. Request with invalid key -> 401
+    resp_wrong_key = client.get("/api/v1/cv/jobs/test_job", headers={"X-API-Key": "wrong-key"})
+    assert resp_wrong_key.status_code == 401
+
+    # 3. Request with valid X-API-Key -> 404 (authorized, reaches endpoint)
+    resp_valid_header = client.get("/api/v1/cv/jobs/test_job", headers={"X-API-Key": "secret-test-key-12345"})
+    assert resp_valid_header.status_code == 404
+
+    # 4. Request with valid Bearer token -> 404 (authorized)
+    resp_valid_bearer = client.get("/api/v1/cv/jobs/test_job", headers={"Authorization": "Bearer secret-test-key-12345"})
+    assert resp_valid_bearer.status_code == 404
+

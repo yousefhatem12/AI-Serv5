@@ -31,5 +31,5 @@ class ExtractionErrorResponse(BaseModel):
     error_code: str = Field(
         ...,
         description="Standardized error code",
-        json_schema_extra={"example": "UNSUPPORTED_FILE_TYPE"}
+        json_schema_extra={"example": "UNSUPPORTED_FILE_TYPE"},
     )

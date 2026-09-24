@@ -8,7 +8,7 @@ from src.db.base import Base
 from src.db.models.job_requirement import JobRequirementModel
 from src.db.repositories.job_repository import DatabaseJobRepository
 from src.models.candidate import Candidate, CandidateProfileDetails, CandidateSkill, SkillLevel
-from src.repositories.behavior_repository import MockBehaviorRepository
+from src.db.repositories.behavior_repository import MockBehaviorRepository
 from src.services.matching_service import MatchingService
 from src.services.recommendation_service import RecommendationService
 

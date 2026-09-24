@@ -805,3 +805,147 @@ Only jobs that pass deterministic qualification eligibility are returned. The ra
 }
 ```
 
+---
+
+## 11. Interview Preparation Coach
+
+### 11.1 `POST /api/v1/interview/prep/generate`
+* **Summary**: Generate Practice Questions (MCQ + Essay)
+* **Tag**: `Interview Preparation Coach`
+* **Description**: Generates personalized practice MCQ and open-ended Essay questions tailored to a specific career track and identified skill gaps. Correct answers and grading rubrics are securely masked from the candidate response.
+
+#### Input JSON Payload:
+```json
+{
+  "user_id": "user_456",
+  "job_id": "job_123",
+  "track": "Backend Development",
+  "skill_gaps": ["Database Design", "REST APIs", "System Design"],
+  "total_questions": 4,
+  "include_essay": true
+}
+```
+
+#### Output Response (`200 OK`):
+```json
+{
+  "session_id": "sess_789",
+  "user_id": "user_456",
+  "job_id": "job_123",
+  "track": "Backend Development",
+  "skill_gaps": ["Database Design", "REST APIs", "System Design"],
+  "questions": [
+    {
+      "id": "q_001",
+      "type": "mcq",
+      "prompt": "Which HTTP status code indicates a successful POST that created a resource?",
+      "skill_tag": "REST APIs",
+      "difficulty": "easy",
+      "related_job_id": "job_123",
+      "options": [
+        { "id": "a", "text": "200 OK" },
+        { "id": "b", "text": "201 Created" },
+        { "id": "c", "text": "204 No Content" },
+        { "id": "d", "text": "301 Moved Permanently" }
+      ]
+    },
+    {
+      "id": "q_002",
+      "type": "essay",
+      "prompt": "Explain the difference between optimistic and pessimistic locking in a database, and give a scenario where you'd choose one over the other.",
+      "skill_tag": "Database Design",
+      "difficulty": "medium",
+      "related_job_id": "job_123"
+    }
+  ]
+}
+```
+
+---
+
+### 11.2 `POST /api/v1/interview/prep/submit`
+* **Summary**: Submit Practice Answers and Score Evaluation
+* **Tag**: `Interview Preparation Coach`
+* **Description**: Evaluates submitted MCQ (deterministic) and Essay answers (structured LLM grading against rubric with timeout fallback), calculating points, percentage, per-question feedback, and overall coaching summary.
+
+#### Input JSON Payload:
+```json
+{
+  "session_id": "sess_789",
+  "user_id": "user_456",
+  "job_id": "job_123",
+  "answers": [
+    {
+      "question_id": "q_001",
+      "type": "mcq",
+      "submitted_option_id": "b"
+    },
+    {
+      "question_id": "q_002",
+      "type": "essay",
+      "submitted_answer": "Optimistic locking checks at commit time using version columns, whereas pessimistic locking acquires exclusive locks upfront."
+    }
+  ]
+}
+```
+
+#### Output Response (`200 OK`):
+```json
+{
+  "session_id": "sess_789",
+  "per_question": [
+    {
+      "question_id": "q_001",
+      "type": "mcq",
+      "is_correct": true,
+      "points_earned": 1,
+      "points_possible": 1,
+      "feedback": "Correct! Option 'b' is the right answer."
+    },
+    {
+      "question_id": "q_002",
+      "type": "essay",
+      "score": 85,
+      "points_possible": 100,
+      "criteria_met": [
+        "Defines optimistic locking",
+        "Defines pessimistic locking"
+      ],
+      "criteria_missed": [
+        "Gives a concrete transaction scenario"
+      ],
+      "feedback": "Solid definitions of locking mechanisms. Include a specific scenario (such as bank transfers) to maximize score."
+    }
+  ],
+  "overall_score": {
+    "raw_points": 86.0,
+    "max_points": 101.0,
+    "percentage": 85.1
+  },
+  "summary_feedback": "Strong database fundamentals and accurate API knowledge. Practice providing concrete application examples in open-ended essays."
+}
+```
+
+---
+
+### 11.3 `GET /api/v1/interview/prep/sessions/{session_id}`
+* **Summary**: Get Practice Session History
+* **Tag**: `Interview Preparation Coach`
+* **Description**: Retrieves past interview session details including questions, candidate submissions, and evaluation results.
+
+#### Output Response (`200 OK`):
+```json
+{
+  "session_id": "sess_789",
+  "user_id": "user_456",
+  "job_id": "job_123",
+  "track": "Backend Development",
+  "skill_gaps": ["Database Design", "REST APIs", "System Design"],
+  "questions": [...],
+  "answers": [...],
+  "evaluation": { ... },
+  "created_at": "2026-09-24T10:00:00Z"
+}
+```
+
+

@@ -107,9 +107,9 @@ def test_matching_api_skill_gap_endpoint(mock_analyze):
     assert response.json()["qualification_status"] == "Partially Qualified"
 
 
-@patch("src.services.matching_service.matching_service.analyze_skill_gap")
-def test_matching_api_explain_endpoint(mock_analyze):
-    mock_analyze.return_value = SkillGapAnalysisResponse(
+@patch("src.services.matching_service.matching_service.explain_job_match")
+def test_matching_api_explain_endpoint(mock_explain):
+    mock_explain.return_value = SkillGapAnalysisResponse(
         job_id="job_exp_test",
         candidate_id="cand_exp_test",
         overall_match_score=92.0,

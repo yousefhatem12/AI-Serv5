@@ -22,6 +22,8 @@ EXEMPT_EXACT_PATHS: Set[str] = {
 EXEMPT_PREFIXES: Set[str] = {
     "/docs",
     "/redoc",
+    f"{settings.API_V1_STR}/docs",
+    f"{settings.API_V1_STR}/redoc",
     f"{settings.API_V1_STR}/openapi.json",
     # The canonical CV router keeps its original dependency-based limiter.
     f"{settings.API_V1_STR}/cv",

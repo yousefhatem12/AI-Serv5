@@ -10,9 +10,9 @@ from src.models.candidate import (
     CandidateSkill,
     SkillLevel,
 )
-from src.repositories.behavior_repository import MockBehaviorRepository
-from src.repositories.candidate_repository import candidate_repository
-from src.repositories.mock_job_repository import MockJobRepository
+from src.db.repositories.behavior_repository import MockBehaviorRepository
+from src.db.repositories.candidate_repository import candidate_repository
+from src.db.repositories.mock_job_repository import MockJobRepository
 from src.schemas.recommendation import CandidateBehaviorHistory
 from src.services.recommendation_service import recommendation_service
 

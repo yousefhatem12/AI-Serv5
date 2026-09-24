@@ -1,5 +1,5 @@
-from __future__ import annotations
 import logging
+import pytest
 from unittest.mock import patch
 from fastapi.testclient import TestClient
 from src.main import app
@@ -82,7 +82,6 @@ def test_safe_error_message_redaction():
         redacted = _safe_error_message(exc)
         assert fake_secret not in redacted
         assert "[REDACTED]" in redacted
-
 
 
 @patch("src.services.matching_service.matching_service.analyze_skill_gap")
