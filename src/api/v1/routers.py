@@ -11,6 +11,7 @@ from src.api.v1.endpoints.matches import router as matches_router
 from src.api.v1.endpoints.recommendations import router as recommendations_router
 from src.api.v1.endpoints.review_queue import router as review_queue_router
 from src.api.v1.endpoints.roadmap import router as roadmap_router
+from src.api.v1.endpoints.application_strategy import router as strategy_router
 from src.api.mentor_routes import router as mentor_router
 
 api_router = APIRouter()
@@ -26,6 +27,7 @@ api_router.include_router(roadmap_router)
 api_router.include_router(recommendations_router)
 api_router.include_router(interview_router)
 api_router.include_router(mentor_router)
+api_router.include_router(strategy_router)
 
 
 # Compatibility aliases

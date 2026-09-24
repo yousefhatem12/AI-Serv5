@@ -21,7 +21,7 @@ def _classify_intent(user_message: str) -> AgentType:
     lowered = user_message.lower()
     if any(k in lowered for k in ["roadmap", "plan", "milestone", "stage", "weekly", "action plan", "reprioritize", "adjust roadmap"]):
         return AgentType.ROADMAP
-    if any(k in lowered for k in ["this job", "apply", "match", "fit", "interview", "ready", "debrief", "rejection", "rejected", "requirements"]):
+    if any(k in lowered for k in ["this job", "apply", "match", "fit", "interview", "ready", "debrief", "rejection", "rejected", "requirements", "strategy", "should i apply", "improve first", "alternative role"]):
         return AgentType.JOB_INSIGHTS
     return AgentType.MENTOR
 

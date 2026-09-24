@@ -155,3 +155,9 @@ class MockJobRepository(JobRepository):
 
     def get_job_by_id(self, job_id: str) -> Optional[JobPosting]:
         return self._jobs.get(job_id)
+
+    def get_job(self, job_id: str) -> Optional[JobPosting]:
+        return self.get_job_by_id(job_id)
+
+
+mock_job_repository = MockJobRepository()

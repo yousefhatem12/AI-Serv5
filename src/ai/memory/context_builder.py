@@ -3,6 +3,7 @@ from src.ai.memory.chat_history import get_recent_messages
 from src.ai.crew.tools.cv_tool import get_cv_profile_tool
 from src.ai.crew.tools.roadmap_tool import get_roadmap_tool
 from src.ai.crew.tools.matching_tool import get_job_match_tool
+from src.ai.crew.tools.recommendation_tool import get_job_recommendations_tool
 
 
 async def build_mentor_context(
@@ -23,10 +24,11 @@ async def build_mentor_context(
     1. Candidate profile and verified CV extraction
     2. Target role and career preferences
     3. Selected, saved and applied jobs
-    4. Match reports and prioritized skill gaps
-    5. Current roadmap, completed milestones and user notes
-    6. Application statuses that the user has recorded
-    7. Recent conversation history
+    4. Personalized job recommendations feed
+    5. Match reports and prioritized skill gaps
+    6. Current roadmap, completed milestones and user notes
+    7. Application statuses that the user has recorded
+    8. Recent conversation history
     """
     recent_messages = await get_recent_messages(conversation_id)
     
@@ -50,6 +52,12 @@ async def build_mentor_context(
         else:
             match_data = get_job_match_tool.invoke({"user_id": user_id, "job_id": job_id})
 
+    # 4. Personalized job recommendations
+    if hasattr(get_job_recommendations_tool, "func"):
+        recommendations = get_job_recommendations_tool.func(user_id=user_id, limit=5)
+    else:
+        recommendations = get_job_recommendations_tool.invoke({"user_id": user_id, "limit": 5})
+
     return {
         "candidate_profile": cv_profile,
         "cv_summary": cv_profile,
@@ -58,6 +66,7 @@ async def build_mentor_context(
         "selected_job_id": job_id,
         "saved_jobs": saved_jobs or [],
         "applied_jobs": applied_jobs or [],
+        "personalized_recommendations": recommendations,
         "match_reports": match_reports or ([match_data] if match_data else []),
         "prioritized_skill_gaps": match_data.get("missing_gaps", []) if isinstance(match_data, dict) else [],
         "current_roadmap": roadmap,

@@ -47,9 +47,9 @@ def test_agents_configuration():
     assert roadmap_agent.allow_delegation is False
     assert job_insights_agent.allow_delegation is False
 
-    assert len(mentor_agent.tools) == 6
+    assert len(mentor_agent.tools) == 7
     assert len(roadmap_agent.tools) == 2
-    assert len(job_insights_agent.tools) == 3
+    assert len(job_insights_agent.tools) == 4
 
 
 def test_intent_classification():
