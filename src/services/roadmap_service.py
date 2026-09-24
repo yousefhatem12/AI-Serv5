@@ -132,9 +132,9 @@ class RoadmapService:
                                     existing_res = session.query(SkillResourceModel).filter(
                                         SkillResourceModel.video_id == item["video_id"]
                                     ).first()
-                                    if not existing_res:
+                                    if not existing_res and skill_id:
                                         new_res = SkillResourceModel(
-                                            skill_id=skill_id or f"skill_{abs(hash(gap_query)) % 1000000}",
+                                            skill_id=skill_id,
                                             video_id=item["video_id"],
                                             title=item["title"],
                                             channel_name=item.get("channel_name", "YouTube"),

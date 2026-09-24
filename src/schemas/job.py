@@ -4,6 +4,7 @@ from typing import Optional, List, Union
 from pydantic import BaseModel, Field
 
 class SkillRequirement(BaseModel):
+    skill_id: Optional[str] = Field(default=None, description="Stable Skill Registry identity when resolved")
     skill_name: str = Field(description="Name of the required skill or tool")
     proficiency: str = Field(default="Intermediate", description="Expected proficiency level (e.g., Basic, Intermediate, Advanced, Expert)")
     is_critical: bool = Field(default=False, description="Whether this skill is a non-negotiable core requirement")
@@ -21,6 +22,7 @@ class SkillRequirement(BaseModel):
             # Support both 'name' and 'skill_name'
             name = item.get("skill_name") or item.get("name") or "Unknown"
             return cls(
+                skill_id=item.get("skill_id"),
                 skill_name=name,
                 proficiency=item.get("proficiency") or item.get("expected_proficiency") or "Intermediate",
                 is_critical=bool(item.get("is_critical", False)),

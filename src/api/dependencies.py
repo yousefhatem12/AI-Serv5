@@ -7,6 +7,7 @@ from src.cv_extractor.llm_extractor import LLMExtractor
 from src.cv_extractor.pipeline import CVExtractionPipeline
 from src.job_extractor.pipeline import JobExtractionPipeline
 from src.taxonomy.taxonomy_manager import TaxonomyManager
+from src.taxonomy.skill_registry_resolver import SkillRegistryResolver
 
 
 @lru_cache
@@ -17,6 +18,7 @@ def get_cv_pipeline() -> CVExtractionPipeline:
     """
     app_settings = get_app_settings()
     taxonomy = TaxonomyManager(seed_file_path=app_settings.taxonomy_path)
+    registry = SkillRegistryResolver(taxonomy)
     loader = DocumentLoader()
     extractor = LLMExtractor()
 
@@ -24,6 +26,7 @@ def get_cv_pipeline() -> CVExtractionPipeline:
         taxonomy_manager=taxonomy,
         document_loader=loader,
         llm_extractor=extractor,
+        skill_registry_resolver=registry,
     )
 
 
@@ -35,4 +38,7 @@ def get_job_pipeline() -> JobExtractionPipeline:
     """
     app_settings = get_app_settings()
     taxonomy = TaxonomyManager(seed_file_path=app_settings.taxonomy_path)
-    return JobExtractionPipeline(taxonomy_manager=taxonomy)
+    return JobExtractionPipeline(
+        taxonomy_manager=taxonomy,
+        skill_registry_resolver=SkillRegistryResolver(taxonomy),
+    )

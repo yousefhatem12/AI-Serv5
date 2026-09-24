@@ -41,9 +41,11 @@ def init_db() -> None:
         import src.db.models.job_requirement  # noqa: F401 — registers AI-contract columns
         import src.db.models.roadmap
         import src.db.models.skill_resource
+        import src.db.models.skill_registry  # noqa: F401 - registers registry tables
 
         Base.metadata.create_all(bind=engine)
         _ensure_job_columns()
+        _bootstrap_skill_registry()
         logger.info("Database tables verified and initialized successfully.")
     except Exception as e:
         logger.error(f"Error initializing database tables: {e}", exc_info=True)
@@ -86,3 +88,20 @@ def _ensure_job_columns() -> None:
     with engine.begin() as connection:
         for name, sql_type in missing:
             connection.execute(text(f'ALTER TABLE jobs ADD COLUMN "{name}" {sql_type}'))
+
+
+def _bootstrap_skill_registry() -> None:
+    """Load the small trusted seed into the persistent registry idempotently."""
+    from src.db.repositories.skill_registry_repository import SkillRegistryRepository
+    from src.taxonomy.skill_registry_resolver import SkillRegistryResolver
+    from src.taxonomy.taxonomy_manager import TaxonomyManager
+
+    session = SessionLocal()
+    try:
+        taxonomy = TaxonomyManager()
+        SkillRegistryRepository(session).bootstrap_seed(
+            taxonomy.get_all_skills(),
+            SkillRegistryResolver.normalized_name,
+        )
+    finally:
+        session.close()
