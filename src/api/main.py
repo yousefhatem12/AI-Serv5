@@ -30,6 +30,15 @@ async def lifespan(_: FastAPI):
     setup_logging()
     logger.info("Initializing SkillMatch service components...")
 
+    import os
+    if not os.getenv("AI_SERVICE_API_KEY") and not os.getenv("SERVICE_API_KEY") and not os.getenv("API_KEY"):
+        logger.warning(
+            "AI_SERVICE_API_KEY is not set in environment variables. "
+            "Using default fallback development API key."
+        )
+    else:
+        logger.info("AI_SERVICE_API_KEY configured for API authentication.")
+
     init_db()
 
     yield

@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple, cast
 
 from fastapi import HTTPException, Request, Security, status
-from fastapi.security import APIKeyHeader
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from starlette.requests import Request as StarletteRequest
 
 from src.core.config import get_app_settings, settings
@@ -24,7 +24,8 @@ logger = logging.getLogger(__name__)
 # --- API Key Auth & Rate Limiting ---
 # =====================================================================
 
-# API Key header definition for OpenAPI docs
+# Security definitions for OpenAPI docs
+http_bearer = HTTPBearer(auto_error=False)
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
@@ -272,27 +273,52 @@ get_client_identifier = get_client_ip
 
 async def verify_api_key(
     request: Request,
-    api_key_header_val: str | None = Security(api_key_header),
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(http_bearer),
+    api_key_header_val: Optional[str] = Security(api_key_header),
 ) -> str | None:
     """
     Verifies API Key authentication when enabled.
-    Supports 'X-API-Key' header or 'Authorization: Bearer <key>'.
+    Validates token sent via 'Authorization: Bearer <token>' or 'X-API-Key' header.
     """
-    auth_enabled = bool(getattr(settings, "enable_api_key_auth", False) or getattr(settings, "ENABLE_API_KEY_AUTH", False))
+    auth_enabled = bool(
+        getattr(settings, "enable_api_key_auth", False)
+        or getattr(settings, "ENABLE_API_KEY_AUTH", False)
+    )
     if not auth_enabled:
         return None
 
-    provided_key = api_key_header_val
-    if not provided_key:
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
+    provided_key: Optional[str] = None
+    if credentials and credentials.scheme.lower() == "bearer" and credentials.credentials:
+        provided_key = credentials.credentials.strip()
+    elif api_key_header_val:
+        provided_key = api_key_header_val.strip()
+    else:
+        auth_header = request.headers.get("Authorization", "").strip()
+        if auth_header.lower().startswith("bearer "):
             provided_key = auth_header[7:].strip()
+        elif request.headers.get("x-api-key"):
+            provided_key = request.headers.get("x-api-key", "").strip()
 
-    expected_key = getattr(settings, "api_key", None) or getattr(settings, "API_KEY", None)
-    if not provided_key or provided_key != expected_key:
+    valid_keys = {
+        k.strip()
+        for k in [
+            getattr(settings, "AI_SERVICE_API_KEY", None),
+            getattr(settings, "api_key", None),
+            getattr(settings, "API_KEY", None),
+        ]
+        if k and isinstance(k, str) and k.strip()
+    }
+
+    is_valid = bool(
+        provided_key
+        and any(hmac.compare_digest(provided_key, key) for key in valid_keys)
+    )
+
+    if not is_valid:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"detail": "Invalid or missing API key.", "error_code": "UNAUTHORIZED"},
+            detail={"detail": "Invalid or missing API key", "error_code": "UNAUTHORIZED"},
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     return provided_key

@@ -129,7 +129,9 @@ class AppSettings(BaseModel):
         default_factory=lambda: ["Content-Type", "Authorization", "X-API-Key", "Accept"]
     )
     cors_allow_credentials: bool = Field(default=True)
-    api_key: str | None = Field(default=None)
+    DEFAULT_AI_SERVICE_API_KEY: str = "WCg0ZHIb7IcoYT9RezDYF-ydSaTi8D2kuKDPF93ACYw"
+    AI_SERVICE_API_KEY: str = Field(default="WCg0ZHIb7IcoYT9RezDYF-ydSaTi8D2kuKDPF93ACYw")
+    api_key: str | None = Field(default="WCg0ZHIb7IcoYT9RezDYF-ydSaTi8D2kuKDPF93ACYw")
     enable_api_key_auth: bool = Field(default=False)
     rate_limit_per_minute: int = Field(default=60, ge=1)
     enable_rate_limiting: bool = Field(default=True)
@@ -181,7 +183,9 @@ class Settings(BaseModel):
 
     # Backward-compatible attribute aliases (used by CV service, security, and tests)
     taxonomy_path: str = Field(default_factory=resolve_taxonomy_path)
-    api_key: str | None = None
+    DEFAULT_AI_SERVICE_API_KEY: str = "WCg0ZHIb7IcoYT9RezDYF-ydSaTi8D2kuKDPF93ACYw"
+    AI_SERVICE_API_KEY: str = Field(default="WCg0ZHIb7IcoYT9RezDYF-ydSaTi8D2kuKDPF93ACYw")
+    api_key: str | None = Field(default="WCg0ZHIb7IcoYT9RezDYF-ydSaTi8D2kuKDPF93ACYw")
     enable_api_key_auth: bool = False
     rate_limit_per_minute: int = Field(default=60, ge=1)
     enable_rate_limiting: bool = True
@@ -237,9 +241,15 @@ class Settings(BaseModel):
 
         host = env("API_HOST", "127.0.0.1")
         port = env_int("API_PORT", 8001)
-        environment = env("ENVIRONMENT", "development")
-        api_key = env("SERVICE_API_KEY") or env("API_KEY") or None
-        enable_api_key_auth = env_bool("ENABLE_API_KEY_AUTH", False)
+        ai_service_api_key = (
+            env("AI_SERVICE_API_KEY")
+            or env("SERVICE_API_KEY")
+            or env("API_KEY")
+            or cls().DEFAULT_AI_SERVICE_API_KEY
+        )
+        is_test_env = env("ENVIRONMENT") == "test"
+        enable_api_key_auth = env_bool("ENABLE_API_KEY_AUTH", False if is_test_env else True)
+        api_key = ai_service_api_key
         rate_limit_enabled = env_bool("ENABLE_RATE_LIMITING", env_bool("RATE_LIMIT_ENABLED", True))
         rate_limit_requests = env_int("RATE_LIMIT_PER_MINUTE", env_int("RATE_LIMIT_REQUESTS", 60))
         secret_key = env("SECRET_KEY", "default_secret_key_change_in_production_12345")
@@ -278,6 +288,7 @@ class Settings(BaseModel):
             LOG_LEVEL=env("LOG_LEVEL", "INFO"),
             TAXONOMY_PATH=resolve_taxonomy_path(env("TAXONOMY_PATH")) if env("TAXONOMY_PATH") else resolve_taxonomy_path(),
             taxonomy_path=resolve_taxonomy_path(env("TAXONOMY_PATH")) if env("TAXONOMY_PATH") else resolve_taxonomy_path(),
+            AI_SERVICE_API_KEY=ai_service_api_key,
             api_key=api_key,
             enable_api_key_auth=enable_api_key_auth,
             rate_limit_per_minute=rate_limit_requests,

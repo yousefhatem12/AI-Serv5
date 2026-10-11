@@ -1,15 +1,14 @@
 from __future__ import annotations
+import hmac
 import threading
 import time
+from typing import Optional
 
 from fastapi import HTTPException, Request, Security, status
-from fastapi.security import APIKeyHeader
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 
 from src.core.config import get_app_settings
-from src.core.security import get_client_ip
-
-# API Key header definition for OpenAPI docs
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+from src.core.security import get_client_ip, http_bearer, api_key_header, verify_api_key
 
 
 class SlidingWindowRateLimiter:
@@ -72,36 +71,12 @@ rate_limiter = SlidingWindowRateLimiter()
 get_client_identifier = get_client_ip
 
 
-async def verify_api_key(
-    request: Request,
-    api_key_header_val: str | None = Security(api_key_header)
-) -> str | None:
-    """
-    Verifies API Key authentication when enabled.
-    Supports 'X-API-Key' header or 'Authorization: Bearer <key>'.
-    """
-    app_settings = get_app_settings()
-    if not app_settings.enable_api_key_auth:
-        return None
-
-    # Check X-API-Key header
-    provided_key = api_key_header_val
-    if not provided_key:
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            provided_key = auth_header[7:].strip()
-
-    if not provided_key or provided_key != app_settings.api_key:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"detail": "Invalid or missing API key.", "error_code": "UNAUTHORIZED"}
-        )
-
-    return provided_key
+# verify_api_key is canonically defined in src.core.security and imported above.
 
 
 async def require_service_api_key(
     request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(http_bearer),
     api_key_header_val: str | None = Security(api_key_header),
 ) -> str:
     """Require the already-configured service key for internal write operations.
@@ -113,7 +88,7 @@ async def require_service_api_key(
     never disabled by the public-read API-key feature flag.
     """
     app_settings = get_app_settings()
-    configured_key = app_settings.api_key
+    configured_key = getattr(app_settings, "api_key", None)
     if not configured_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -123,16 +98,23 @@ async def require_service_api_key(
             },
         )
 
-    provided_key = api_key_header_val
-    if not provided_key:
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
+    provided_key: Optional[str] = None
+    if credentials and credentials.scheme.lower() == "bearer" and credentials.credentials:
+        provided_key = credentials.credentials.strip()
+    elif api_key_header_val:
+        provided_key = api_key_header_val.strip()
+    else:
+        auth_header = request.headers.get("Authorization", "").strip()
+        if auth_header.lower().startswith("bearer "):
             provided_key = auth_header[7:].strip()
+        elif request.headers.get("x-api-key"):
+            provided_key = request.headers.get("x-api-key", "").strip()
 
-    if not provided_key or provided_key != configured_key:
+    if not provided_key or not hmac.compare_digest(provided_key, configured_key):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"detail": "Invalid or missing service API key.", "error_code": "UNAUTHORIZED"},
+            headers={"WWW-Authenticate": "Bearer"},
         )
     return provided_key
 
