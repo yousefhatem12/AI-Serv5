@@ -97,6 +97,27 @@ def test_file_endpoint_uses_the_same_llm_only_pipeline_and_preserves_candidate_i
         app.dependency_overrides.pop(get_cv_pipeline, None)
 
 
+def test_file_endpoint_accepts_doc_and_docs_formats():
+    app.dependency_overrides[get_cv_pipeline] = lambda: _pipeline([
+        {"user": {"name": "Avery"}, "raw_skills": [{"name": "Python"}]},
+        {"complete": True, "missing_paths": [], "unsupported_paths": []},
+    ])
+    rtf_content = rb"{\rtf1\ansi Avery\par Python Developer}"
+    try:
+        client = TestClient(app)
+        for ext in [".doc", ".docs"]:
+            response = client.post(
+                "/api/v1/cv/extract-file",
+                files={"file": (f"candidate{ext}", rtf_content, "application/msword")},
+                data={"candidate_id": f"cand_{ext.replace('.', '')}"},
+            )
+            assert response.status_code == 200, f"Failed for {ext}: {response.text}"
+            assert response.json()["candidate_id"] == f"cand_{ext.replace('.', '')}"
+    finally:
+        app.dependency_overrides.pop(get_cv_pipeline, None)
+
+
+
 def test_rate_limiting_enforcement(monkeypatch):
     """P2 Test: Exceeding request quota triggers 429 Too Many Requests with ExtractionErrorResponse."""
     from src.core.security import rate_limiter

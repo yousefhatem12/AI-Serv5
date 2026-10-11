@@ -86,7 +86,7 @@ All endpoints under `/api/v1/*` require API key verification (unless disabled in
 - **Content-Type:** `multipart/form-data`
 
 #### Form Parameters
-- `file` (*binary, required*): CV document in `.pdf`, `.docx`, or `.txt` format (Max 10MB).
+- `file` (*binary, required*): CV document in `.pdf`, `.docx`, `.doc`, `.docs`, or `.txt` format (Max 10MB).
 - `candidate_id` (*string, optional*): Custom ID to assign (e.g. `cand_001`).
 
 #### Response (200 OK)
@@ -190,7 +190,7 @@ All endpoints under `/api/v1/*` require API key verification (unless disabled in
 - **Content-Type:** `multipart/form-data`
 
 #### Form Parameters
-- `file` (*binary, required*): CV document (`.pdf`, `.docx`, `.txt`).
+- `file` (*binary, required*): CV document (`.pdf`, `.docx`, `.doc`, `.docs`, `.txt`).
 - `candidate_id` (*string, optional*): Custom ID.
 
 #### Response (202 Accepted)

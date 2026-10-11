@@ -16,6 +16,8 @@ class DocumentLoader:
     SUPPORTED_EXTENSIONS = {
         ".pdf": "pdf",
         ".docx": "docx",
+        ".doc": "doc",
+        ".docs": "doc",
         ".txt": "text",
         ".md": "text",
     }
@@ -45,6 +47,9 @@ class DocumentLoader:
         elif doc_type == "docx":
             text, links = self._extract_docx(path)
             return text, "docx", links
+        elif doc_type == "doc":
+            text, links = self._extract_doc(path)
+            return text, "doc", links
         elif doc_type == "text":
             text, links = self._extract_plain_text(path)
             return text, "text", links
@@ -203,3 +208,171 @@ class DocumentLoader:
         """Reads plain text files with UTF-8 encoding."""
         with open(str(path), "r", encoding="utf-8", errors="replace") as f:
             return f.read(), []
+
+    def _extract_doc(self, path: Path) -> tuple[str, list[str]]:
+        """
+        Extracts text and embedded links from Word .doc and .docs files.
+        Handles:
+        1. Renamed DOCX files (Office Open XML zip).
+        2. Binary OLE Compound Files (Word 97-2003) via FIB piece table parsing with fallback.
+        3. RTF files saved as .doc / .docs.
+        """
+        import zipfile
+
+        # 1. Check if the file is actually a DOCX archive saved with .doc / .docs extension
+        if zipfile.is_zipfile(str(path)):
+            try:
+                return self._extract_docx(path)
+            except Exception as e:
+                logger.debug("Attempt to extract %s as zip/docx failed: %s", path.name, e)
+
+        extracted_links: list[str] = []
+        extracted_text = ""
+
+        # 2. Try OLE binary Word extraction (Word 97-2003 binary format)
+        try:
+            import olefile
+            if olefile.isOleFile(str(path)):
+                with olefile.OleFileIO(str(path)) as ole:
+                    if ole.exists("WordDocument"):
+                        word_stream = ole.openstream("WordDocument").read()
+                        table_name = None
+                        if len(word_stream) >= 512:
+                            import struct
+                            flags = struct.unpack("<H", word_stream[0x000A:0x000C])[0]
+                            table_name = "1Table" if (flags & 0x0200) else "0Table"
+
+                        table_stream = b""
+                        if table_name and ole.exists(table_name):
+                            table_stream = ole.openstream(table_name).read()
+
+                        if table_stream:
+                            extracted_text = self._parse_doc_piece_table(word_stream, table_stream)
+
+                        if not extracted_text or len(extracted_text.strip()) < 10:
+                            extracted_text = self._extract_doc_stream_fallback(word_stream)
+        except Exception as ole_err:
+            logger.warning("OLE .doc extraction attempt failed for %s: %s", path.name, ole_err)
+
+        # 3. Fallback for RTF or plain text files saved as .doc / .docs
+        if not extracted_text or not extracted_text.strip():
+            try:
+                raw_bytes = path.read_bytes()
+                if raw_bytes.startswith(b"{\\rtf"):
+                    extracted_text = self._extract_rtf_text(raw_bytes)
+                else:
+                    extracted_text = raw_bytes.decode("utf-8", errors="ignore").strip()
+            except Exception as read_err:
+                logger.debug("Fallback byte decoding failed for %s: %s", path.name, read_err)
+
+        if not extracted_text or not extracted_text.strip():
+            raise ValueError(
+                f"No readable text could be extracted from '{path.name}'. "
+                "Please ensure the document contains digital selectable text."
+            )
+
+        extracted_text = extracted_text.replace("\r\n", "\n").replace("\r", "\n")
+        extracted_text = re.sub(r"\n{3,}", "\n\n", extracted_text).strip()
+
+        # Extract embedded URLs
+        urls = re.findall(r"https?://[^\s<>\"'{}|\\^`]+", extracted_text)
+        for u in urls:
+            u_clean = u.rstrip(".,;)]")
+            if u_clean and u_clean not in extracted_links:
+                extracted_links.append(u_clean)
+
+        return extracted_text, extracted_links
+
+    @staticmethod
+    def _parse_doc_piece_table(word_stream: bytes, table_stream: bytes) -> str:
+        """Parses the Word FIB piece table (clx) to reconstruct text."""
+        import struct
+        try:
+            fcClx = struct.unpack("<I", word_stream[0x01A2:0x01A6])[0]
+            lcbClx = struct.unpack("<I", word_stream[0x01A6:0x01AA])[0]
+            pos = fcClx
+            end = min(fcClx + lcbClx, len(table_stream))
+            pieces: list[str] = []
+            while pos < end:
+                clxt = table_stream[pos]
+                pos += 1
+                if clxt == 1:
+                    if pos + 2 > end:
+                        break
+                    cbGrpprl = struct.unpack("<H", table_stream[pos:pos + 2])[0]
+                    pos += 2 + cbGrpprl
+                elif clxt == 2:
+                    if pos + 4 > end:
+                        break
+                    lcb = struct.unpack("<I", table_stream[pos:pos + 4])[0]
+                    pos += 4
+                    if lcb < 4:
+                        break
+                    num_pieces = (lcb - 4) // 12
+                    cpr_pos = pos
+                    pcd_pos = pos + (num_pieces + 1) * 4
+                    for i in range(num_pieces):
+                        cp_start = struct.unpack("<I", table_stream[cpr_pos + i * 4 : cpr_pos + (i + 1) * 4])[0]
+                        cp_end = struct.unpack("<I", table_stream[cpr_pos + (i + 1) * 4 : cpr_pos + (i + 2) * 4])[0]
+                        if pcd_pos + i * 8 + 6 > len(table_stream):
+                            break
+                        fc_desc = struct.unpack("<I", table_stream[pcd_pos + i * 8 + 2 : pcd_pos + i * 8 + 6])[0]
+                        is_compressed = bool(fc_desc & 0x40000000)
+                        fc = fc_desc & 0xBFFFFFFF
+                        length = cp_end - cp_start
+                        if length <= 0 or length > 5000000:
+                            continue
+                        if is_compressed:
+                            actual_fc = fc // 2
+                            if actual_fc + length <= len(word_stream):
+                                raw = word_stream[actual_fc : actual_fc + length]
+                                pieces.append(raw.decode("cp1252", errors="replace"))
+                        else:
+                            if fc + length * 2 <= len(word_stream):
+                                raw = word_stream[fc : fc + length * 2]
+                                pieces.append(raw.decode("utf-16le", errors="replace"))
+                    break
+                else:
+                    break
+            text = "".join(pieces)
+            return text.replace("\x07", "\t").replace("\x0b", "\n").replace("\x0c", "\n")
+        except Exception as e:
+            logger.debug("Error in _parse_doc_piece_table: %s", e)
+            return ""
+
+    @staticmethod
+    def _extract_doc_stream_fallback(stream: bytes) -> str:
+        """Extract readable UTF-16LE and ASCII text runs from raw binary stream."""
+        runs: list[str] = []
+        utf16_runs = re.findall(rb"(?:[\x20-\x7e\n\r\t]\x00){4,}", stream)
+        for r in utf16_runs:
+            try:
+                decoded = r.decode("utf-16le", errors="ignore").strip()
+                if len(decoded) > 3:
+                    runs.append(decoded)
+            except Exception:
+                pass
+
+        if runs:
+            return "\n".join(runs)
+
+        ascii_runs = re.findall(rb"[\x20-\x7e\n\r\t]{4,}", stream)
+        for r in ascii_runs:
+            try:
+                decoded = r.decode("cp1252", errors="ignore").strip()
+                if len(decoded) > 3 and not decoded.startswith(("{\\", "<!", "<?")):
+                    runs.append(decoded)
+            except Exception:
+                pass
+
+        return "\n".join(runs)
+
+    @staticmethod
+    def _extract_rtf_text(rtf_bytes: bytes) -> str:
+        """Simple text stripper for RTF formatted documents."""
+        text = rtf_bytes.decode("cp1252", errors="replace")
+        text = re.sub(r"\\par[d]?", "\n", text)
+        text = re.sub(r"\\tab", "\t", text)
+        text = re.sub(r"\\[a-zA-Z]+(-?\d+)? ?", "", text)
+        text = re.sub(r"[{}]", "", text)
+        return text.strip()

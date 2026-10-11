@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/cv", tags=["CV Profile Extraction"])
 
-ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
+ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc", ".docs", ".txt", ".md"}
 MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB limit
 
 # Global in-memory storage for background extraction jobs
@@ -95,7 +95,7 @@ def _run_cv_background_extraction(
     status_code=status.HTTP_200_OK,
     summary="Extract Structured Profile from CV File (Direct)",
     description=(
-        "Upload a digital CV/Resume file (PDF, DOCX, TXT, or Markdown). "
+        "Upload a digital CV/Resume file (PDF, DOCX, DOC, DOCS, TXT, or Markdown). "
         "Processes the file without blocking the FastAPI event loop via background thread pool."
     ),
     responses={
@@ -109,7 +109,7 @@ def _run_cv_background_extraction(
 )
 async def extract_cv_file(
     response: Response,
-    file: UploadFile = File(..., description="CV file to upload (PDF, DOCX, TXT, or Markdown)"),
+    file: UploadFile = File(..., description="CV file to upload (PDF, DOCX, DOC, DOCS, TXT, or Markdown)"),
     candidate_id: str | None = Form(None, description="Optional custom candidate ID (e.g. cand_001)"),
     pipeline: CVExtractionPipeline = Depends(get_cv_pipeline),
 ):
@@ -123,10 +123,7 @@ async def extract_cv_file(
     raw_filename = Path(file.filename).name
     ext = Path(raw_filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
-        if ext == ".doc":
-            detail_msg = "Legacy '.doc' format is not supported. Please convert your CV to modern '.docx' or '.pdf' before uploading."
-        else:
-            detail_msg = f"Unsupported file format: '{ext}'. Allowed formats are: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
+        detail_msg = f"Unsupported file format: '{ext}'. Allowed formats are: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"detail": detail_msg, "error_code": "UNSUPPORTED_FILE_TYPE"},
@@ -228,7 +225,7 @@ async def extract_cv_file(
 )
 async def extract_cv_file_async(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(..., description="CV file to upload (PDF, DOCX, TXT, or Markdown)"),
+    file: UploadFile = File(..., description="CV file to upload (PDF, DOCX, DOC, DOCS, TXT, or Markdown)"),
     candidate_id: str | None = Form(None, description="Optional custom candidate ID (e.g. cand_001)"),
     pipeline: CVExtractionPipeline = Depends(get_cv_pipeline),
 ):
@@ -241,10 +238,7 @@ async def extract_cv_file_async(
     raw_filename = Path(file.filename).name
     ext = Path(raw_filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
-        if ext == ".doc":
-            detail_msg = "Legacy '.doc' format is not supported. Please convert your CV to modern '.docx' or '.pdf' before uploading."
-        else:
-            detail_msg = f"Unsupported file format: '{ext}'. Allowed formats are: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
+        detail_msg = f"Unsupported file format: '{ext}'. Allowed formats are: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"detail": detail_msg, "error_code": "UNSUPPORTED_FILE_TYPE"},
