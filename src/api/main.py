@@ -166,6 +166,38 @@ app.include_router(
     dependencies=[Depends(verify_api_key)],
 )
 
+from fastapi.openapi.utils import get_openapi
+
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        openapi_version=app.openapi_version,
+        description=app.description,
+        routes=app.routes,
+    )
+    auth_enabled = bool(
+        getattr(settings, "enable_api_key_auth", False)
+        or getattr(settings, "ENABLE_API_KEY_AUTH", False)
+    )
+    if not auth_enabled:
+        openapi_schema.pop("security", None)
+        if "components" in openapi_schema and "securitySchemes" in openapi_schema["components"]:
+            openapi_schema["components"].pop("securitySchemes", None)
+        for path_item in openapi_schema.get("paths", {}).values():
+            if isinstance(path_item, dict):
+                for operation in path_item.values():
+                    if isinstance(operation, dict):
+                        operation.pop("security", None)
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
+
 # Ensure database tables are initialized
 init_db()
 

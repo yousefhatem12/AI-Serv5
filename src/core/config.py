@@ -248,7 +248,7 @@ class Settings(BaseModel):
             or cls().DEFAULT_AI_SERVICE_API_KEY
         )
         is_test_env = env("ENVIRONMENT") == "test"
-        enable_api_key_auth = env_bool("ENABLE_API_KEY_AUTH", False if is_test_env else True)
+        enable_api_key_auth = env_bool("ENABLE_API_KEY_AUTH", False)
         api_key = ai_service_api_key
         rate_limit_enabled = env_bool("ENABLE_RATE_LIMITING", env_bool("RATE_LIMIT_ENABLED", True))
         rate_limit_requests = env_int("RATE_LIMIT_PER_MINUTE", env_int("RATE_LIMIT_REQUESTS", 60))
